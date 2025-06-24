@@ -44,11 +44,7 @@ def validate(config, dataloader, model: FlowMatchingModel, step: int, writer: Su
     hyps = []
 
     for n, batch in enumerate(dataloader):
-        spectrogram = model.synthesize(
-            input_ids=batch["input_ids"].cuda(),
-            dt=config.flow_matching.dt,
-            cfg_strength=config.flow_matching.cfg_strength,
-        )
+        spectrogram = model.synthesize(batch["input_ids"].cuda())
         hyp_wav = vocoder(spectrogram)
 
         hyp_wav = hyp_wav.cpu().squeeze(0).numpy()
@@ -115,6 +111,8 @@ def train_flow_matching(config):
             use_unet_skip_connection=config.flow_matching.use_unet_skip_connection,
             mean=config.flow_matching.mean,
             std=config.flow_matching.std,
+            dt=config.flow_matching.dt,
+            cfg_strength=config.flow_matching.cfg_strength,
         ),
         get_input_embeddings(config.speech2unit.model_name_or_path),
     ).cuda()

@@ -43,8 +43,6 @@ class FlowMatchingModel(PreTrainedModel):
 
     def __init__(self, config: FlowMatchingConfig, embedding: Optional[nn.Embedding] = None):
         super().__init__(config)
-        self.config = config
-
         self.time_cond_mlp = TimestepEmbedding(config.hidden_size)
         self.embed_tokens = (
             nn.Embedding(config.vocab_size + 1, config.dim_cond_emb, padding_idx=0) if embedding is None else embedding
@@ -63,10 +61,6 @@ class FlowMatchingModel(PreTrainedModel):
 
         self.to_pred = nn.Linear(config.hidden_size, config.dim_in, bias=False)
         self.duration_predictor = FlowMatchingDurationPredictor(config) if config.predict_duration else None
-
-    @property
-    def device(self):
-        return next(self.parameters()).device
 
     def forward(
         self,
@@ -125,20 +119,11 @@ class FlowMatchingModel(PreTrainedModel):
         return F.mse_loss(vt[mask], ut[mask]) + duration_loss
 
     @torch.inference_mode()
-    def synthesize(
-        self,
-        input_ids: torch.LongTensor,
-        dt: float = 0.1,
-        cfg_strength: float = 0.5,
-    ) -> torch.FloatTensor:
+    def synthesize(self, input_ids: torch.LongTensor) -> torch.FloatTensor:
         """
         Args:
             input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
                 Input sequence of text vectors.
-            dt (`float`, defaults to 0.1):
-                Step size for the ordinary differential equation (ODE).
-            cfg_strength (`float`, defaults to 0.5):
-                Strength of classifier-free guidance.
 
         Returns:
             x1 (`torch.FloatTensor` of shape `(batch_size, sequence_length, dim_in)`):
@@ -159,11 +144,11 @@ class FlowMatchingModel(PreTrainedModel):
             mask = torch.arange(0, lengths.max(), device=lengths.device).unsqueeze(0) < lengths
 
         bsz, seq_len, _ = inputs_embeds.shape
-
         xt = torch.randn(bsz, seq_len, self.config.dim_in, device=inputs_embeds.device)
+        expand_mask = torch.cat([mask, mask])
 
-        for t in torch.arange(0, 1, dt, device=self.device):
-            time_emb = self.time_cond_mlp(t.unsqueeze(0).expand(bsz))
+        for t in torch.arange(0, 1, self.config.dt, device=self.device):
+            time_emb = self.time_cond_mlp(t.unsqueeze(0).expand(2 * bsz))
 
             # concat source signal, semantic / phoneme conditioning embed, and conditioning
             # and project
@@ -172,13 +157,13 @@ class FlowMatchingModel(PreTrainedModel):
 
             hidden_states = torch.cat([hidden_states_cond, hidden_states_uncond])
             hidden_states = self.to_embed(hidden_states)
-            hidden_states = self.transformer(hidden_states, mask=mask, adaptive_rmsnorm_cond=time_emb)
+            hidden_states = self.transformer(hidden_states, mask=expand_mask, adaptive_rmsnorm_cond=time_emb)
 
             vt = self.to_pred(hidden_states)
             vt_cond, vt_uncond = torch.chunk(vt, 2)
-            vt = vt_cond + cfg_strength * (vt_cond - vt_uncond)
+            vt = vt_cond + self.config.cfg_strength * (vt_cond - vt_uncond)
 
-            xt = xt + vt * dt
+            xt = xt + vt * self.config.dt
 
         x1 = xt * self.config.std + self.config.mean
         x1[~mask] = dynamic_range_compression_torch(torch.tensor(0))
@@ -223,26 +208,17 @@ class FlowMatchingWithBigVGan(PreTrainedModel):
         return spectrogram_lengths
 
     @torch.inference_mode()
-    def forward(
-        self,
-        input_ids: torch.LongTensor,
-        dt: float = 0.1,
-        cfg_strength: float = 0.5,
-    ) -> List[torch.FloatTensor]:
+    def forward(self, input_ids: torch.LongTensor) -> List[torch.FloatTensor]:
         """
         Args:
             input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
                 Input sequence of text vectors.
-            dt (`float`, defaults to 0.1):
-                Step size for the ordinary differential equation (ODE).
-            cfg_strength (`float`, defaults to 0.5):
-                Strength of classifier-free guidance.
 
         Returns:
             waveform (`list` of `torch.FloatTensor` of shape `(1, (sequence_length - 1) * 320 + 400)`):
                 Synthesized waveforms.
         """
-        spectrogram = self.model.synthesize(input_ids, dt, cfg_strength)
+        spectrogram = self.model.synthesize(input_ids)
 
         pad_value = dynamic_range_compression_torch(torch.tensor(0))
         mask = spectrogram.ne(pad_value).all(dim=2)
