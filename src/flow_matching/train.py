@@ -47,7 +47,7 @@ def validate(config, dataloader, model: FlowMatchingModel, step: int, writer: Su
         spectrogram = model.synthesize(
             input_ids=batch["input_ids"].cuda(),
             dt=config.flow_matching.dt,
-            truncation_value=config.flow_matching.truncation_value,
+            cfg_strength=config.flow_matching.cfg_strength,
         )
         hyp_wav = vocoder(spectrogram)
 
@@ -111,6 +111,7 @@ def train_flow_matching(config):
             intermediate_size=config.flow_matching.intermediate_size,
             attn_dropout=config.flow_matching.attn_dropout,
             ff_dropout=config.flow_matching.ff_dropout,
+            cfg_dropout=config.flow_matching.cfg_dropout,
             use_unet_skip_connection=config.flow_matching.use_unet_skip_connection,
             mean=config.flow_matching.mean,
             std=config.flow_matching.std,

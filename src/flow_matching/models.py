@@ -84,12 +84,12 @@ class FlowMatchingModel(PreTrainedModel):
                 Batch of padded durations.
         """
         mask = (spectrogram_labels != -100).any(dim=-1)
-        batch, seq_len, _ = spectrogram_labels.shape
+        bsz, seq_len, _ = spectrogram_labels.shape
         spectrogram_labels = (spectrogram_labels - self.config.mean) / self.config.std
 
         # main conditional flow logic is below
         x0 = torch.randn_like(spectrogram_labels)
-        timesteps = torch.rand((batch,), device=self.device)
+        timesteps = torch.rand((bsz,), device=self.device)
         t = timesteps.unsqueeze(1).unsqueeze(2)
         xt = (1 - t) * x0 + t * spectrogram_labels
         ut = spectrogram_labels - x0
@@ -110,24 +110,26 @@ class FlowMatchingModel(PreTrainedModel):
             duration_labels = torch.log(duration_labels.float() + self.duration_predictor.log_domain_offset)
             duration_loss = F.mse_loss(duration_predictions, duration_labels)
 
-        hidden_states = torch.cat([xt, inputs_embeds], dim=-1)
-
-        x = self.to_embed(hidden_states)
-
         time_emb = self.time_cond_mlp(timesteps)
 
-        # attend
-        x = self.transformer(x, mask=mask, adaptive_rmsnorm_cond=time_emb)
-        x = self.to_pred(x)
+        # drop condition for classifier-free guidance
+        dropout_mask = torch.rand(bsz, 1, 1, device=inputs_embeds.device) < self.config.cfg_dropout
+        dropout_mask = dropout_mask.expand_as(inputs_embeds)
+        inputs_embeds.masked_fill_(dropout_mask, 0.0)
 
-        return F.mse_loss(x[mask], ut[mask]) + duration_loss
+        hidden_states = torch.cat([xt, inputs_embeds], dim=-1)
+        hidden_states = self.to_embed(hidden_states)
+        hidden_states = self.transformer(hidden_states, mask=mask, adaptive_rmsnorm_cond=time_emb)
+        vt = self.to_pred(hidden_states)
+
+        return F.mse_loss(vt[mask], ut[mask]) + duration_loss
 
     @torch.inference_mode()
     def synthesize(
         self,
         input_ids: torch.LongTensor,
         dt: float = 0.1,
-        truncation_value: Optional[float] = None,
+        cfg_strength: float = 0.5,
     ) -> torch.FloatTensor:
         """
         Args:
@@ -135,9 +137,9 @@ class FlowMatchingModel(PreTrainedModel):
                 Input sequence of text vectors.
             dt (`float`, defaults to 0.1):
                 Step size for the ordinary differential equation (ODE).
-            truncation_value (`float`, *optional*, defaults to `None`):
-                Truncation value of a prior sample x0~N(0, 1).
-                https://arxiv.org/abs/1809.11096
+            cfg_strength (`float`, defaults to 0.5):
+                Strength of classifier-free guidance.
+
         Returns:
             x1 (`torch.FloatTensor` of shape `(batch_size, sequence_length, dim_in)`):
                 Synthesized log mel-spectrograms.
@@ -159,20 +161,23 @@ class FlowMatchingModel(PreTrainedModel):
         bsz, seq_len, _ = inputs_embeds.shape
 
         xt = torch.randn(bsz, seq_len, self.config.dim_in, device=inputs_embeds.device)
-        if truncation_value is not None:
-            xt = torch.clamp(xt, -truncation_value, truncation_value)
 
         for t in torch.arange(0, 1, dt, device=self.device):
-            # concat source signal, semantic / phoneme conditioning embed, and conditioning
-            # and project
-            x = torch.cat([xt, inputs_embeds], dim=-1)
-            x = self.to_embed(x)
-
             time_emb = self.time_cond_mlp(t.unsqueeze(0).expand(bsz))
 
-            # attend
-            x = self.transformer(x, mask=mask, adaptive_rmsnorm_cond=time_emb)
-            vt = self.to_pred(x)
+            # concat source signal, semantic / phoneme conditioning embed, and conditioning
+            # and project
+            hidden_states_cond = torch.cat([xt, inputs_embeds], dim=-1)
+            hidden_states_uncond = torch.cat([xt, torch.zeros_like(inputs_embeds)], dim=-1)
+
+            hidden_states = torch.cat([hidden_states_cond, hidden_states_uncond])
+            hidden_states = self.to_embed(hidden_states)
+            hidden_states = self.transformer(hidden_states, mask=mask, adaptive_rmsnorm_cond=time_emb)
+
+            vt = self.to_pred(hidden_states)
+            vt_cond, vt_uncond = torch.chunk(vt, 2)
+            vt = vt_cond + cfg_strength * (vt_cond - vt_uncond)
+
             xt = xt + vt * dt
 
         x1 = xt * self.config.std + self.config.mean
@@ -222,7 +227,7 @@ class FlowMatchingWithBigVGan(PreTrainedModel):
         self,
         input_ids: torch.LongTensor,
         dt: float = 0.1,
-        truncation_value: Optional[float] = None,
+        cfg_strength: float = 0.5,
     ) -> List[torch.FloatTensor]:
         """
         Args:
@@ -230,14 +235,14 @@ class FlowMatchingWithBigVGan(PreTrainedModel):
                 Input sequence of text vectors.
             dt (`float`, defaults to 0.1):
                 Step size for the ordinary differential equation (ODE).
-            truncation_value (`float`, *optional*, defaults to `None`):
-                Truncation value of a prior sample x0~N(0, 1).
-                https://arxiv.org/abs/1809.11096
+            cfg_strength (`float`, defaults to 0.5):
+                Strength of classifier-free guidance.
+
         Returns:
             waveform (`list` of `torch.FloatTensor` of shape `(1, (sequence_length - 1) * 320 + 400)`):
                 Synthesized waveforms.
         """
-        spectrogram = self.model.synthesize(input_ids, dt, truncation_value)
+        spectrogram = self.model.synthesize(input_ids, dt, cfg_strength)
 
         pad_value = dynamic_range_compression_torch(torch.tensor(0))
         mask = spectrogram.ne(pad_value).all(dim=2)

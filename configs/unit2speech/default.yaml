@@ -24,7 +24,7 @@ flow_matching:
 
   # inference
   dt: 0.1
-  truncation_value: null  # truncation trick (https://arxiv.org/abs/1809.11096)
+  cfg_strength: 0.5  # classifier-free guidance (https://arxiv.org/abs/2207.12598)
 
   # src.flow_matching.configs.ConditionalFlowMatchingConfig
   vocab_size: 8192
@@ -36,6 +36,7 @@ flow_matching:
   intermediate_size: 768
   attn_dropout: 0.0
   ff_dropout: 0.0
+  cfg_dropout: 0.2
   use_unet_skip_connection: false
   mean: -5.8843  # mean of log mel-spectrogram
   std: 2.2615  # std of log mel-spectrogram

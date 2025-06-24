@@ -17,6 +17,7 @@ class FlowMatchingConfig(PretrainedConfig):
         intermediate_size: int = 768,
         attn_dropout: float = 0.0,
         ff_dropout: float = 0.0,
+        cfg_dropout: float = 0.2,
         use_unet_skip_connection: bool = False,
         mean: float = -5.8843,
         std: float = 2.2615,
@@ -32,6 +33,7 @@ class FlowMatchingConfig(PretrainedConfig):
         self.intermediate_size = intermediate_size
         self.attn_dropout = attn_dropout
         self.ff_dropout = ff_dropout
+        self.cfg_dropout = cfg_dropout
         self.use_unet_skip_connection = use_unet_skip_connection
         self.mean = mean
         self.std = std
