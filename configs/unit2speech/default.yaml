@@ -1,6 +1,9 @@
 common:
   seed: 0
 
+path:
+  result: "results/unit2speech/default.csv"
+
 dataset:
   name: "ryota-komatsu/libritts-r-s5-hubert-8192units"  # https://huggingface.co/datasets
   wav_dir: "data/LibriTTS_R_16k" # ${root}/train-clean-100, train-clean-360, ...

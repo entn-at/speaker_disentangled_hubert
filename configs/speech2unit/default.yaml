@@ -7,7 +7,7 @@ path:
   quantizer1: "models/s5-hubert/quantizer1.npy"
   quantizer2: "models/s5-hubert/quantizer2.npy"
   segment_dir: "segments/s5-hubert"
-  result: "results/s5-hubert.json"
+  result: "results/speech2unit/s5-hubert.json"
 
 dataset:
   root: "data" # ${root}/LibriSpeech/train-clean-100, train-clean-360, ...
