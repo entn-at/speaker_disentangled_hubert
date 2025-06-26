@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import librosa
 import torch
 import torchaudio
 from datasets import Array2D, Dataset, DatasetDict, Features, Sequence, Value
@@ -174,6 +175,10 @@ def resample(config):
         wav, sr = torchaudio.load(wav_path)
         wav = torchaudio.functional.resample(wav, sr, 16000)
 
+        # wav = wav.numpy()
+        # wav, _ = librosa.effects.trim(wav, top_db=20)
+        # wav = torch.from_numpy(wav)
+
         wav_path = wav_dir / wav_name
         wav_path.parent.mkdir(parents=True, exist_ok=True)
         wav_path = str(wav_path)  # for sox backend
@@ -185,7 +190,7 @@ def tokenize_dataset(config):
 
     trainset = LibriTTS_R(config.dataset.wav_dir, split="train-*")
     devset = LibriTTS_R(config.dataset.wav_dir, config.dataset.wav_dir_orig, split="dev-clean")
-    testset = LibriTTS_R(config.dataset.wav_dir, config.dataset.wav_dir_orig, split="test-*")
+    testset = LibriTTS_R(config.dataset.wav_dir, config.dataset.wav_dir_orig, split="test-clean")
 
     train_loader = torch.utils.data.DataLoader(trainset)
     dev_loader = torch.utils.data.DataLoader(devset)
@@ -200,25 +205,26 @@ def tokenize_dataset(config):
 
 
 def _tokenize(encoder, dataloader: torch.utils.data.DataLoader):
-    def generate_dataset():
-        for item in tqdm(dataloader):
-            input_values = item["input_values"].cuda()
-            input_values = input_values / input_values.abs().max() * 0.95
+    dataset = []
 
-            spectrogram_labels = mel_spectrogram(input_values).squeeze(0)  # (80, len)
-            spectrogram_labels = spectrogram_labels.transpose(0, 1)  # (len, 80)
-            spectrogram_labels = spectrogram_labels.cpu().tolist()
+    for item in tqdm(dataloader):
+        input_values = item["input_values"].cuda()
+        input_values = input_values / input_values.abs().max() * 0.95
 
-            outputs = encoder(item["input_values"].cuda())
+        spectrogram_labels = mel_spectrogram(input_values).squeeze(0)  # (80, len)
+        spectrogram_labels = spectrogram_labels.transpose(0, 1)  # (len, 80)
+        spectrogram_labels = spectrogram_labels.cpu().tolist()
 
-            item = {
-                "id": item["name"][0],
-                "units": outputs[0]["units"].tolist(),
-                "durations": outputs[0]["durations"].tolist(),
-                "transcript": item["transcript"][0],
-                "spectrogram": spectrogram_labels,
-            }
-            yield item
+        outputs = encoder(item["input_values"].cuda())
+
+        item = {
+            "id": item["name"][0],
+            "units": outputs[0]["units"].tolist(),
+            "durations": outputs[0]["durations"].tolist(),
+            "transcript": item["transcript"][0],
+            "spectrogram": spectrogram_labels,
+        }
+        dataset.append(item)
 
     features = Features(
         {
@@ -230,7 +236,7 @@ def _tokenize(encoder, dataloader: torch.utils.data.DataLoader):
         }
     )
 
-    return Dataset.from_generator(generate_dataset, features=features)
+    return Dataset.from_list(dataset, features=features)
 
 
 def extract_features(config):
