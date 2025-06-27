@@ -40,7 +40,7 @@ flow_matching:
   mean: -5.8843  # mean of log mel-spectrogram
   std: 2.2615  # std of log mel-spectrogram
   dt: 0.1
-  cfg_strength: 0.5  # classifier-free guidance (https://arxiv.org/abs/2207.12598)
+  cfg_strength: 0.7  # classifier-free guidance (https://arxiv.org/abs/2207.12598)
 
 vocoder:
   model_name_or_path: "ryota-komatsu/bigvgan"

@@ -3,8 +3,8 @@ dataset:
   ext_audio: ".flac"
 
   train: ""
-  swuggy: "ryota-komatsu/swuggy"  # lexical
-  sblimp: "ryota-komatsu/sblimp"  # syntactic
+  swuggy: "ryota-komatsu/swuggy-s5-hubert-8192units"  # lexical
+  sblimp: "ryota-komatsu/sblimp-s5-hubert-8192units"  # syntactic
 
   APP_DIR: "data/zr-data"
   result_dir: "results/speechlm"
@@ -35,5 +35,5 @@ optim:
 
 speech2unit:
   model_name_or_path: "ryota-komatsu/s5-hubert"
-  num_workers: 8
-  batch_size: 16   # work with a single 24GB VRAM GPU
+  num_workers: 4
+  batch_size: 4   # work with a single 24GB VRAM GPU

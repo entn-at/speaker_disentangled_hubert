@@ -3,7 +3,7 @@ from pathlib import Path
 
 import jiwer
 import torch
-from datasets import load_dataset
+from datasets import concatenate_datasets, load_dataset
 from torch.utils.tensorboard import SummaryWriter
 from transformers import AutoConfig, AutoModel, AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 
@@ -75,7 +75,11 @@ def validate(config, dataloader, model: FlowMatchingModel, step: int, writer: Su
 def train_flow_matching(config):
     fix_random_seed(config.common.seed)
 
-    train_set = load_dataset(config.dataset.name, split="train", keep_in_memory=True).with_format("torch")
+    train_set = concatenate_datasets(
+        [
+            load_dataset(config.dataset.name, split="train", keep_in_memory=True),
+        ]
+    ).with_format("torch")
     dev_set = load_dataset(config.dataset.name, split="dev", keep_in_memory=True).with_format("torch")
 
     train_loader = torch.utils.data.DataLoader(
