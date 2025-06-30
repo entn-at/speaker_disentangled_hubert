@@ -28,22 +28,22 @@ def validate(config, model, tokenizer, step: int, writer: SummaryWriter):
     if not Path(config.dataset.result_dir).is_dir():
         subprocess.run(["zrc", "submission:init", "sLM21", config.dataset.result_dir], env=os.environ)
 
-    _eval(
-        model,
-        tokenizer,
-        config.dataset.swuggy,
-        "dev",
-        Path(config.dataset.result_dir) / "lexical/dev.txt",
-        config.dataloader.batch_size_per_device,
+    swuggy = load_dataset(config.dataset.swuggy, split="dev")
+    swuggy_loader = torch.utils.data.DataLoader(
+        swuggy,
+        batch_size=config.dataloader.batch_size_per_device,
+        collate_fn=get_collate_fn(tokenizer),
     )
-    _eval(
-        model,
-        tokenizer,
-        config.dataset.sblimp,
-        "dev",
-        Path(config.dataset.result_dir) / "syntactic/dev.txt",
-        config.dataloader.batch_size_per_device,
+
+    sblimp = load_dataset(config.dataset.sblimp, split="dev")
+    sblimp_loader = torch.utils.data.DataLoader(
+        sblimp,
+        batch_size=config.dataloader.batch_size_per_device,
+        collate_fn=get_collate_fn(tokenizer),
     )
+
+    _eval(model, swuggy_loader, Path(config.dataset.result_dir) / "lexical/dev.txt")
+    _eval(model, sblimp_loader, Path(config.dataset.result_dir) / "syntactic/dev.txt")
 
     subprocess.run(
         [

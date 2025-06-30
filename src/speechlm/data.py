@@ -46,7 +46,7 @@ class SpeechDataset(torch.utils.data.Dataset):
 def get_collate_fn(
     tokenizer,
 ):
-    def collate_fn(batch) -> Dict[str, torch.LongTensor]:
+    def collate_fn(batch) -> Dict[str, Any]:
         input_ids = []
         names = []
 
@@ -55,7 +55,7 @@ def get_collate_fn(
             input_ids.append("".join([f"<{unit}>" for unit in units]))
             names.append(item["id"])
 
-        inputs = tokenizer(input_ids)
+        inputs = tokenizer(input_ids, padding=True, return_tensors="pt")
 
         input_ids = inputs.input_ids
         attention_mask = inputs.attention_mask

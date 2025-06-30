@@ -14,22 +14,22 @@ def evaluate(config):
     model = AutoModelForCausalLM.from_pretrained(config.model.path).cuda()
     tokenizer = AutoTokenizer.from_pretrained(config.model.path)
 
-    _eval(
-        model,
-        tokenizer,
-        config.dataset.swuggy,
-        "test",
-        Path(config.dataset.result_dir) / "lexical/test.txt",
-        config.dataloader.batch_size_per_device,
+    swuggy = load_dataset(config.dataset.swuggy, split="test")
+    swuggy_loader = torch.utils.data.DataLoader(
+        swuggy,
+        batch_size=config.dataloader.batch_size_per_device,
+        collate_fn=get_collate_fn(tokenizer),
     )
-    _eval(
-        model,
-        tokenizer,
-        config.dataset.sblimp,
-        "test",
-        Path(config.dataset.result_dir) / "syntactic/test.txt",
-        config.dataloader.batch_size_per_device,
+
+    sblimp = load_dataset(config.dataset.sblimp, split="test")
+    sblimp_loader = torch.utils.data.DataLoader(
+        sblimp,
+        batch_size=config.dataloader.batch_size_per_device,
+        collate_fn=get_collate_fn(tokenizer),
     )
+
+    _eval(model, swuggy_loader, Path(config.dataset.result_dir) / "lexical/test.txt")
+    _eval(model, sblimp_loader, Path(config.dataset.result_dir) / "syntactic/test.txt")
 
     subprocess.run(
         [
@@ -66,19 +66,9 @@ def evaluate(config):
 @torch.inference_mode()
 def _eval(
     model,
-    tokenizer,
-    in_file,
-    split: str,
+    loader: torch.utils.data.DataLoader,
     out_file,
-    batch_size: int,
 ):
-    dataset = load_dataset(in_file, split=split)
-    loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size,
-        collate_fn=get_collate_fn(tokenizer),
-    )
-
     with open(out_file, "w") as f:
         for batch in loader:
             # Speech LM
