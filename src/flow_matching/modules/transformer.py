@@ -52,7 +52,7 @@ class RotaryEmbedding(nn.Module):
     def device(self):
         return self.inv_freq.device
 
-    @torch.amp.autocast("cuda", enabled=False)
+    @torch.autocast("cuda", enabled=False)
     def forward(self, t: Union[int, torch.Tensor]):
         if not torch.is_tensor(t):
             t = torch.arange(t, device=self.device)
@@ -68,7 +68,7 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-@torch.amp.autocast("cuda", enabled=False)
+@torch.autocast("cuda", enabled=False)
 def apply_rotary_pos_emb(pos, t):
     return t * pos.cos() + rotate_half(t) * pos.sin()
 

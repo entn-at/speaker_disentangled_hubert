@@ -95,8 +95,8 @@ def train(rank, config):
     scheduler_g = torch.optim.lr_scheduler.ExponentialLR(optim_g, gamma=config.vocoder.lr_decay)
     scheduler_d = torch.optim.lr_scheduler.ExponentialLR(optim_d, gamma=config.vocoder.lr_decay)
 
-    scaler_g = torch.amp.GradScaler("cuda")
-    scaler_d = torch.amp.GradScaler("cuda")
+    scaler_g = torch.GradScaler("cuda")
+    scaler_d = torch.GradScaler("cuda")
 
     if state_dict_do is not None:
         optim_g.load_state_dict(state_dict_do["optim_g"])
@@ -156,7 +156,7 @@ def train(rank, config):
             if rank == 0:
                 start_b = time.time()
 
-            with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+            with torch.autocast("cuda", dtype=torch.bfloat16):
                 x, y, mask = batch
                 x = x.to(device)
                 y = y.to(device)
@@ -186,7 +186,7 @@ def train(rank, config):
             scaler_d.update()
 
             # Generator
-            with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+            with torch.autocast("cuda", dtype=torch.bfloat16):
                 # L1 Mel-Spectrogram Loss
                 loss_mel = fn_mel_loss_multiscale(y, y_g_hat) * config.vocoder.lambda_melloss
 

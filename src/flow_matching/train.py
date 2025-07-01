@@ -132,7 +132,7 @@ def train_flow_matching(config):
         config.flow_matching.lr_min,
     )
 
-    scaler = torch.amp.GradScaler("cuda")
+    scaler = torch.GradScaler(model.device.type)
     writer = SummaryWriter(os.path.join(config.flow_matching.model_name_or_path, "logs"))
 
     last_epoch = 0
@@ -142,7 +142,7 @@ def train_flow_matching(config):
         model.train()
 
         for batch in train_loader:
-            with torch.amp.autocast("cuda"):
+            with torch.autocast(model.device.type):
                 loss = model(
                     input_ids=batch["input_ids"].cuda(),
                     spectrogram_labels=batch["spectrogram_labels"].cuda(),

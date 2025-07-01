@@ -171,7 +171,7 @@ def train(config):
         decay_steps,
     )
 
-    scaler = torch.amp.GradScaler("cuda", init_scale=1e32)
+    scaler = torch.GradScaler("cuda", init_scale=1e32)
     writer = SummaryWriter(config.path.checkpoint)
 
     last_epoch = 0
@@ -186,7 +186,7 @@ def train(config):
         model.train()
 
         for batch in tqdm(train_loader, desc=f"epoch {epoch}", disable=config.common.disable_tqdm):
-            with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+            with torch.autocast("cuda", dtype=torch.bfloat16):
                 loss = model(
                     teacher_input_values=batch["teacher_input_values"].cuda(),
                     student_input_values=batch["student_input_values"].cuda(),

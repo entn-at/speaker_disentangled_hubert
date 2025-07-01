@@ -117,18 +117,27 @@ def train(config):
     if rank == 0:
         writer = SummaryWriter(config.model.path)
 
-    peft_config = LoraConfig(
-        task_type=TaskType.CAUSAL_LM,
-        inference_mode=False,
-        r=config.model.lora.r,
-        lora_alpha=config.model.lora.lora_alpha,
-        target_modules=config.model.lora.target_modules,
-    )
+    # peft_config = LoraConfig(
+    #     task_type=TaskType.CAUSAL_LM,
+    #     inference_mode=False,
+    #     r=config.model.lora.r,
+    #     lora_alpha=config.model.lora.lora_alpha,
+    #     target_modules=config.model.lora.target_modules,
+    # )
 
     model = AutoModelForCausalLM.from_pretrained(config.model.name)
     model.resize_token_embeddings(len(tokenizer))
-    model = get_peft_model(model, peft_config)
-    model.print_trainable_parameters()
+    model.requires_grad_(False)
+    model.get_input_embeddings().requires_grad_(True)
+    model.get_output_embeddings().requires_grad_(True)
+    handle_input_embeddings = model.get_input_embeddings().register_hook(
+        lambda grad: torch.cat([torch.zeros_like(grad[: len(vocab)]), grad[len(vocab) :]])
+    )
+    handle_output_embeddings = model.get_output_embeddings().register_hook(
+        lambda grad: torch.cat([torch.zeros_like(grad[: len(vocab)]), grad[len(vocab) :]])
+    )
+    # model = get_peft_model(model, peft_config)
+    # model.print_trainable_parameters()
     model.to(device_id)
     model = DDP(model, device_ids=[device_id])
 
@@ -143,7 +152,7 @@ def train(config):
         config.optim.lr_min,
     )
 
-    scaler = torch.amp.GradScaler("cuda", init_scale=1e24)
+    scaler = torch.GradScaler("cuda", init_scale=1e24)
 
     last_epoch = 0
     step = 0
@@ -178,7 +187,7 @@ def train(config):
             next(train_loader_iter)
 
         for step, batch in enumerate(train_loader_iter, start=step):
-            with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+            with torch.autocast("cuda", dtype=torch.bfloat16):
                 loss = model(
                     input_ids=batch["input_ids"].to(device_id),
                     attention_mask=batch["attention_mask"].to(device_id),
@@ -238,6 +247,10 @@ def train(config):
                 if global_step == config.optim.total_steps:
                     torch.distributed.destroy_process_group()
                     return
+
+                if global_step == config.optim.warmup_steps:
+                    handle_input_embeddings.remove()
+                    handle_output_embeddings.remove()
 
         step = 0
 

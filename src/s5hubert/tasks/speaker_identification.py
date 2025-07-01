@@ -100,7 +100,7 @@ def speaker_identification(config):
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.optim.lr, weight_decay=config.optim.weight_decay)
 
-    scaler = torch.amp.GradScaler("cuda")
+    scaler = torch.GradScaler("cuda")
     writer = SummaryWriter(Path(config.path.checkpoint).parent / "logs")
 
     last_epoch = 0
@@ -125,7 +125,7 @@ def speaker_identification(config):
         model.hubert.eval()
 
         for batch in tqdm(train_loader, desc=f"epoch {epoch}", disable=config.common.disable_tqdm):
-            with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+            with torch.autocast("cuda", dtype=torch.bfloat16):
                 loss = model(
                     batch["waveform"].cuda(),
                     batch["attention_mask"].cuda(),
