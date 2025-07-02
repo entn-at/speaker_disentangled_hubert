@@ -1,4 +1,5 @@
 import subprocess
+from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
@@ -28,8 +29,16 @@ def evaluate(config):
         collate_fn=get_collate_fn(tokenizer),
     )
 
+    tSC = load_dataset(config.dataset.tSC, split="test")
+    tSC_loader = torch.utils.data.DataLoader(
+        tSC,
+        batch_size=config.dataloader.batch_size_per_device,
+        collate_fn=get_collate_fn(tokenizer),
+    )
+
     _eval(model, swuggy_loader, Path(config.dataset.result_dir) / "lexical/test.txt")
     _eval(model, sblimp_loader, Path(config.dataset.result_dir) / "syntactic/test.txt")
+    _eval(model, tSC_loader, Path(config.dataset.result_dir) / "tSC/test.txt")
 
     subprocess.run(
         [
@@ -57,9 +66,23 @@ def evaluate(config):
 
     sblimp = (df_sblimp["n"] * df_sblimp["score"]).sum() / df_sblimp["n"].sum()
 
+    # tSC
+    data = defaultdict(dict)
+
+    with open(Path(config.dataset.result_dir) / "tSC/test.txt") as f:
+        for line in f:
+            name, score = line.strip().split()
+            n, id_, correct = name.split("_")
+            score = float(score)
+            data[id_][correct] = score
+
+    data = [{"id": id_, "correct": data[id_]["correct"], "incorrect": data[id_]["incorrect"]} for id_ in data]
+    df_tSC = pd.DataFrame(data)
+    tSC = (df_tSC["correct"] >= df_tSC["incorrect"]).mean()
+
     pd.DataFrame(
-        [swuggy_all, swuggy_iv, swuggy_oov, sblimp],
-        index=["sWUGGY all", "sWUGGY in-vocab", "sWUGGY out-of-vocab", "sBLIMP"],
+        [swuggy_all, swuggy_iv, swuggy_oov, sblimp, tSC],
+        index=["sWUGGY all", "sWUGGY in-vocab", "sWUGGY out-of-vocab", "sBLIMP", "tSC"],
     ).to_csv(Path(config.dataset.result_dir) / "scores/score.csv")
 
 
@@ -69,6 +92,7 @@ def _eval(
     loader: torch.utils.data.DataLoader,
     out_file,
 ):
+    out_file.parent.mkdir(parents=True, exist_ok=True)
     with open(out_file, "w") as f:
         for batch in loader:
             # Speech LM

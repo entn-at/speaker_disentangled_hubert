@@ -251,6 +251,7 @@ def train(config):
                 if global_step == config.optim.warmup_steps:
                     handle_input_embeddings.remove()
                     handle_output_embeddings.remove()
+                    model.requires_grad_(True)
 
         step = 0
 

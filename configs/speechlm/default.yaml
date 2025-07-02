@@ -5,8 +5,10 @@ dataset:
   train: ""
   swuggy: "ryota-komatsu/swuggy-s5-hubert-8192units"  # lexical
   sblimp: "ryota-komatsu/sblimp-s5-hubert-8192units"  # syntactic
+  tSC: "ryota-komatsu/tSC-s5-hubert-8192units"
 
   APP_DIR: "data/zr-data"
+  tSC_DIR: "data/tSC"
   result_dir: "results/speechlm"
 
 dataloader:
@@ -28,7 +30,7 @@ optim:
   lr_min: 0.00005
   beta1: 0.9
   beta2: 0.98
-  max_norm: 0.1
+  max_norm: 0.5
   summary_interval: 100
   validation_save_interval: 10000
   total_steps: 200000

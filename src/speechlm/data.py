@@ -99,8 +99,9 @@ def _tokenize(
     return Dataset.from_list(dataset, features=features)
 
 
-def tokenize_slm21(config):
+def tokenize_eval(config):
     app_dir = Path(config.dataset.APP_DIR).expanduser()
+    tSC_dir = Path(config.dataset.tSC_DIR)
 
     swuggy_dev_dir = app_dir / "datasets/sLM21-dataset/lexical/dev"
     sblimp_dev_dir = app_dir / "datasets/sLM21-dataset/syntactic/dev"
@@ -111,16 +112,19 @@ def tokenize_slm21(config):
     sblimp_dev_paths = list(sblimp_dev_dir.glob("*.wav"))
     swuggy_test_paths = list(swuggy_test_dir.glob("*.wav"))
     sblimp_test_paths = list(sblimp_test_dir.glob("*.wav"))
+    tSC_test_paths = list(tSC_dir.glob("*.wav"))
 
     swuggy_dev_set = SpeechDataset(swuggy_dev_paths, swuggy_dev_dir)
     sblimp_dev_set = SpeechDataset(sblimp_dev_paths, sblimp_dev_dir)
     swuggy_test_set = SpeechDataset(swuggy_test_paths, swuggy_test_dir)
     sblimp_test_set = SpeechDataset(sblimp_test_paths, sblimp_test_dir)
+    tSC_test_set = SpeechDataset(tSC_test_paths, tSC_dir)
 
     swuggy_dev_loader = torch.utils.data.DataLoader(swuggy_dev_set)
     sblimp_dev_loader = torch.utils.data.DataLoader(sblimp_dev_set)
     swuggy_test_loader = torch.utils.data.DataLoader(swuggy_test_set)
     sblimp_test_loader = torch.utils.data.DataLoader(sblimp_test_set)
+    tSC_test_loader = torch.utils.data.DataLoader(tSC_test_set)
 
     encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path).cuda()
 
@@ -128,15 +132,18 @@ def tokenize_slm21(config):
     sblimp_dev = _tokenize(encoder, sblimp_dev_loader)
     swuggy_test = _tokenize(encoder, swuggy_test_loader)
     sblimp_test = _tokenize(encoder, sblimp_test_loader)
+    tSC_test = _tokenize(encoder, tSC_test_loader)
 
     swuggy = DatasetDict({"dev": swuggy_dev, "test": swuggy_test})
     sblimp = DatasetDict({"dev": sblimp_dev, "test": sblimp_test})
+    tSC = DatasetDict({"test": tSC_test})
 
     swuggy.push_to_hub(config.dataset.swuggy)
     sblimp.push_to_hub(config.dataset.sblimp)
+    tSC.push_to_hub(config.dataset.tSC)
 
 
-def tokenize_trainset(config, spk_ids: str = "1-9"):
+def tokenize_train(config, spk_ids: str = "123456789"):
     wav_dir = Path(config.dataset.wav_dir)
     train_paths = wav_dir.glob(f"*/[{spk_ids}]*/**/*" + config.dataset.ext_audio)
     train_set = SpeechDataset(train_paths, wav_dir)
