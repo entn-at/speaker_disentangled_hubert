@@ -225,8 +225,8 @@ def train(config):
                 writer.add_scalar("memory/allocated (GB)", torch.cuda.max_memory_allocated() / 2**30, global_step)
                 writer.add_scalar("memory/reserved (GB)", torch.cuda.max_memory_reserved() / 2**30, global_step)
 
+            # save model
             if rank == 0 and global_step % config.optim.validation_save_interval == 0:
-                # save model
                 ckpt = {
                     "epoch": epoch,
                     "step": step,
@@ -244,14 +244,14 @@ def train(config):
 
                 validate(config, model, tokenizer, global_step, writer)
 
-                if global_step == config.optim.total_steps:
-                    torch.distributed.destroy_process_group()
-                    return
+            if global_step == config.optim.total_steps:
+                torch.distributed.destroy_process_group()
+                return
 
-                if global_step == config.optim.warmup_steps:
-                    handle_input_embeddings.remove()
-                    handle_output_embeddings.remove()
-                    model.requires_grad_(True)
+            if global_step == config.optim.warmup_steps:
+                handle_input_embeddings.remove()
+                handle_output_embeddings.remove()
+                model.requires_grad_(True)
 
         step = 0
 

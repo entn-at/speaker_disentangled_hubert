@@ -52,7 +52,7 @@ def get_collate_fn(
 
         for item in batch:
             units = item["units"]
-            input_ids.append("".join([f"<{unit}>" for unit in units]))
+            input_ids.append("".join(f"<{unit}>" for unit in units))
             names.append(item["id"])
 
         inputs = tokenizer(input_ids, padding=True, return_tensors="pt")
