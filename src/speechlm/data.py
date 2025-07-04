@@ -1,46 +1,30 @@
+import glob
+import os
 from pathlib import Path
 from typing import Any, Dict
 
 import torch
-import torchaudio
-from datasets import Dataset, DatasetDict, Features, Sequence, Value
+from datasets import Dataset, DatasetDict, Features, Sequence, Value, load_dataset
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
 
 from ..s5hubert import S5HubertForSyllableDiscovery
 
 
-class SpeechDataset(torch.utils.data.Dataset):
-    def __init__(self, wav_paths, wav_dir):
-        self.wav_paths = list(wav_paths)
-        self.wav_dir = wav_dir
+def get_audio_collator(data_dir):
+    data_dir = Path(data_dir).resolve()
 
-    def __len__(self) -> int:
-        return len(self.wav_paths)
-
-    def __getitem__(self, n: int) -> Dict[str, Any]:
-        wav_path = self.wav_paths[n]
-        name = wav_path.relative_to(self.wav_dir).with_suffix("")
-        name = str(name)
-        wav_path = str(wav_path)
-
-        input_values, sr = torchaudio.load(wav_path)
-        input_values = input_values.squeeze(0)
-
-        attention_mask = torch.ones_like(input_values, dtype=torch.long)
-
-        return {"input_values": input_values, "attention_mask": attention_mask, "names": name}
-
-    @staticmethod
     def collate_fn(batch):
-        input_values = [item["input_values"] for item in batch]
-        attention_mask = [item["attention_mask"] for item in batch]
-        names = [item["names"] for item in batch]
+        input_values = [item["audio"]["array"] for item in batch]
+        attention_mask = [torch.ones_like(item["audio"]["array"], dtype=torch.long) for item in batch]
+        id = [str(Path(item["audio"]["path"]).relative_to(data_dir).with_suffix("")) for item in batch]
 
         input_values = pad_sequence(input_values, batch_first=True)
         attention_mask = pad_sequence(attention_mask, batch_first=True)
 
-        return {"input_values": input_values, "attention_mask": attention_mask, "names": names}
+        return {"input_values": input_values, "attention_mask": attention_mask, "id": id}
+
+    return collate_fn
 
 
 def get_collate_fn(
@@ -48,12 +32,12 @@ def get_collate_fn(
 ):
     def collate_fn(batch) -> Dict[str, Any]:
         input_ids = []
-        names = []
+        id = []
 
         for item in batch:
             units = item["units"]
             input_ids.append("".join(f"<{unit}>" for unit in units))
-            names.append(item["id"])
+            id.append(item["id"])
 
         inputs = tokenizer(input_ids, padding=True, return_tensors="pt")
 
@@ -65,7 +49,7 @@ def get_collate_fn(
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "labels": labels,
-            "names": names,
+            "id": id,
         }
 
     return collate_fn
@@ -80,9 +64,9 @@ def _tokenize(
     for item in tqdm(data_loader):
         outputs = encoder(item["input_values"].cuda(), item["attention_mask"].cuda())
 
-        for name, output in zip(item["names"], outputs):
+        for id, output in zip(item["id"], outputs):
             example = {
-                "id": name,
+                "id": id,
                 "units": output["units"].tolist(),
                 "durations": output["durations"].tolist(),
             }
@@ -108,23 +92,23 @@ def tokenize_eval(config):
     swuggy_test_dir = app_dir / "datasets/sLM21-dataset/lexical/test"
     sblimp_test_dir = app_dir / "datasets/sLM21-dataset/syntactic/test"
 
-    swuggy_dev_paths = list(swuggy_dev_dir.glob("*.wav"))
-    sblimp_dev_paths = list(sblimp_dev_dir.glob("*.wav"))
-    swuggy_test_paths = list(swuggy_test_dir.glob("*.wav"))
-    sblimp_test_paths = list(sblimp_test_dir.glob("*.wav"))
-    tSC_test_paths = list(tSC_dir.glob("*.wav"))
+    swuggy_dev_paths = glob.glob(os.path.join(swuggy_dev_dir, "*.wav"))
+    sblimp_dev_paths = glob.glob(os.path.join(sblimp_dev_dir, "*.wav"))
+    swuggy_test_paths = glob.glob(os.path.join(swuggy_test_dir, "*.wav"))
+    sblimp_test_paths = glob.glob(os.path.join(sblimp_test_dir, "*.wav"))
+    tSC_test_paths = glob.glob(os.path.join(tSC_dir, "*.wav"))
 
-    swuggy_dev_set = SpeechDataset(swuggy_dev_paths, swuggy_dev_dir)
-    sblimp_dev_set = SpeechDataset(sblimp_dev_paths, sblimp_dev_dir)
-    swuggy_test_set = SpeechDataset(swuggy_test_paths, swuggy_test_dir)
-    sblimp_test_set = SpeechDataset(sblimp_test_paths, sblimp_test_dir)
-    tSC_test_set = SpeechDataset(tSC_test_paths, tSC_dir)
+    swuggy_dev_set = load_dataset("audiofolder", data_files=swuggy_dev_paths, split="train").with_format("torch")
+    sblimp_dev_set = load_dataset("audiofolder", data_files=sblimp_dev_paths, split="train").with_format("torch")
+    swuggy_test_set = load_dataset("audiofolder", data_files=swuggy_test_paths, split="train").with_format("torch")
+    sblimp_test_set = load_dataset("audiofolder", data_files=sblimp_test_paths, split="train").with_format("torch")
+    tSC_test_set = load_dataset("audiofolder", data_files=tSC_test_paths, split="train").with_format("torch")
 
-    swuggy_dev_loader = torch.utils.data.DataLoader(swuggy_dev_set)
-    sblimp_dev_loader = torch.utils.data.DataLoader(sblimp_dev_set)
-    swuggy_test_loader = torch.utils.data.DataLoader(swuggy_test_set)
-    sblimp_test_loader = torch.utils.data.DataLoader(sblimp_test_set)
-    tSC_test_loader = torch.utils.data.DataLoader(tSC_test_set)
+    swuggy_dev_loader = torch.utils.data.DataLoader(swuggy_dev_set, collate_fn=get_audio_collator(swuggy_dev_dir))
+    sblimp_dev_loader = torch.utils.data.DataLoader(sblimp_dev_set, collate_fn=get_audio_collator(sblimp_dev_dir))
+    swuggy_test_loader = torch.utils.data.DataLoader(swuggy_test_set, collate_fn=get_audio_collator(swuggy_test_dir))
+    sblimp_test_loader = torch.utils.data.DataLoader(sblimp_test_set, collate_fn=get_audio_collator(sblimp_test_dir))
+    tSC_test_loader = torch.utils.data.DataLoader(tSC_test_set, collate_fn=get_audio_collator(tSC_dir))
 
     encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path).cuda()
 
@@ -143,18 +127,28 @@ def tokenize_eval(config):
     tSC.push_to_hub(config.dataset.tSC)
 
 
-def tokenize_train(config, spk_ids: str = "123456789"):
-    wav_dir = Path(config.dataset.wav_dir)
-    train_paths = wav_dir.glob(f"*/[{spk_ids}]*/**/*" + config.dataset.ext_audio)
-    train_set = SpeechDataset(train_paths, wav_dir)
-    train_loader = torch.utils.data.DataLoader(
-        train_set,
+def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
+    if Path(config.dataset.wav_dir).is_dir():
+        data_files = sorted(
+            glob.glob(os.path.join(config.dataset.wav_dir, "**/*" + config.dataset.ext_audio), recursive=True)
+        )
+        dataset = load_dataset("audiofolder", data_files=data_files, split="train", cache_dir=config.dataset.cache_dir)
+        data_dir = config.dataset.wav_dir
+    else:
+        dataset = load_dataset(config.dataset.wav_dir, split="train", cache_dir=config.dataset.cache_dir)
+        data_dir = "/"
+
+    dataset = dataset.shard(num_shards=num_shards, index=shard_index)
+    dataset = dataset.with_format("torch")
+
+    loader = torch.utils.data.DataLoader(
+        dataset,
         config.speech2unit.batch_size,
         num_workers=config.speech2unit.num_workers,
-        collate_fn=SpeechDataset.collate_fn,
+        collate_fn=get_audio_collator(data_dir),
     )
 
     encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path).cuda()
 
-    trainset = _tokenize(encoder, train_loader)
-    trainset.push_to_hub(config.dataset.train, split=f"train{spk_ids}")
+    dataset = _tokenize(encoder, loader)
+    dataset.save_to_disk(config.dataset.train, split=f"train.{shard_index}")

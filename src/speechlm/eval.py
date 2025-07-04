@@ -107,5 +107,5 @@ def _eval(
             scores = scores.sum(dim=1) / scores.ne(0).sum(dim=1)
             scores = scores.tolist()
 
-            for name, score in zip(batch["names"], scores):
-                f.write(f"{name} {score}\n")
+            for id, score in zip(batch["id"], scores):
+                f.write(f"{id} {score}\n")

@@ -7,9 +7,9 @@ from src.speechlm.train import train
 
 
 class TaskRunner:
-    def tokenize_train(self, config: str = "configs/speechlm/default.yaml", spkids: str = "123456789"):
+    def tokenize_train(self, config: str = "configs/speechlm/default.yaml", num_shards: int = 1, shard_index: int = 0):
         config = OmegaConf.load(config)
-        tokenize_train(config, spkids)
+        tokenize_train(config, num_shards, shard_index)
 
     def tokenize_eval(self, config: str = "configs/speechlm/default.yaml"):
         config = OmegaConf.load(config)
