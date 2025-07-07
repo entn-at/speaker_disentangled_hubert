@@ -7,7 +7,7 @@ dataset:
   sblimp: "ryota-komatsu/sblimp-s5-hubert-8192units"  # syntactic
   tSC: "ryota-komatsu/tSC-s5-hubert-8192units"
 
-  cache_dir: "~/.cache/huggingface/datasets"
+  HF_HOME: "~/.cache/huggingface"
   APP_DIR: "data/zr-data"
   tSC_DIR: "data/tSC"
   result_dir: "results/speechlm"

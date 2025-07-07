@@ -4,10 +4,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 import torch
-from datasets import DatasetDict, Features, Sequence, Value, load_dataset
 from torch.nn.utils.rnn import pad_sequence
-
-from ..s5hubert import S5HubertForSyllableDiscovery
 
 
 def get_collate_fn(
@@ -44,7 +41,10 @@ def get_tokenize_fn(encoder, data_dir):
     def _tokenize(batch: Dict[str, list]):
         input_values = [item["array"] for item in batch["audio"]]
         attention_mask = [torch.ones_like(item["array"], dtype=torch.long) for item in batch["audio"]]
-        batch["id"] = [str(Path(item["path"]).relative_to(data_dir).with_suffix("")) for item in batch["audio"]]
+        batch["id"] = [
+            str(Path(item["path"]).relative_to(data_dir).with_suffix("")) if "path" in item else ""
+            for item in batch["audio"]
+        ]
 
         input_values = pad_sequence(input_values, batch_first=True)
         attention_mask = pad_sequence(attention_mask, batch_first=True)
@@ -60,6 +60,10 @@ def get_tokenize_fn(encoder, data_dir):
 
 
 def tokenize_eval(config):
+    from datasets import DatasetDict, Features, Sequence, Value, load_dataset
+
+    from ..s5hubert import S5HubertForSyllableDiscovery
+
     app_dir = Path(config.dataset.APP_DIR).expanduser()
     tSC_dir = Path(config.dataset.tSC_DIR)
 
@@ -100,14 +104,20 @@ def tokenize_eval(config):
 
 
 def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
+    os.environ["HF_HOME"] = str(Path(config.dataset.HF_HOME).expanduser())
+
+    from datasets import DatasetDict, Features, Sequence, Value, load_dataset
+
+    from ..s5hubert import S5HubertForSyllableDiscovery
+
     if Path(config.dataset.wav_dir).is_dir():
         data_files = sorted(
             glob.glob(os.path.join(config.dataset.wav_dir, "**/*" + config.dataset.ext_audio), recursive=True)
         )
-        dataset = load_dataset("audiofolder", data_files=data_files, split="train", cache_dir=config.dataset.cache_dir)
+        dataset = load_dataset("audiofolder", data_files=data_files, split="train")
         data_dir = config.dataset.wav_dir
     else:
-        dataset = load_dataset(config.dataset.wav_dir, split="train", cache_dir=config.dataset.cache_dir)
+        dataset = load_dataset(config.dataset.wav_dir, split="train")
         data_dir = "/"
 
     encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path).cuda()

@@ -1,25 +1,29 @@
 import fire
 from omegaconf import OmegaConf
 
-from src.speechlm.data import tokenize_eval, tokenize_train
-from src.speechlm.eval import evaluate
-from src.speechlm.train import train
-
 
 class TaskRunner:
     def tokenize_train(self, config: str = "configs/speechlm/default.yaml", num_shards: int = 1, shard_index: int = 0):
+        from src.speechlm.data import tokenize_train
+
         config = OmegaConf.load(config)
         tokenize_train(config, num_shards, shard_index)
 
     def tokenize_eval(self, config: str = "configs/speechlm/default.yaml"):
+        from src.speechlm.data import tokenize_eval
+
         config = OmegaConf.load(config)
         tokenize_eval(config)
 
     def train(self, config: str = "configs/speechlm/default.yaml"):
+        from src.speechlm.train import train
+
         config = OmegaConf.load(config)
         train(config)
 
     def eval(self, config: str = "configs/speechlm/default.yaml"):
+        from src.speechlm.eval import evaluate
+
         config = OmegaConf.load(config)
         evaluate(config)
 
