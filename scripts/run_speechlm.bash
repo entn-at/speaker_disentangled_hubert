@@ -1,14 +1,13 @@
 #!/bin/bash
 
 #$ -cwd                      ## Execute a job in the current directory
-#$ -l node_q=1               ## Use number of node
+#$ -l node_f=1               ## Use number of node
 #$ -l h_rt=24:00:00          ## Running job time
 #$ -p -5
 #$ -m abe
 #$ -M EMAIL_ADDRESS
 
 config=${1:-configs/speechlm/default.yaml}
-nproc_per_node=${2:-1}
 
 module load cuda/12.1.0
 module load intel
@@ -20,8 +19,8 @@ eval "$(/apps/t4/rhel9/free/miniconda/24.1.2/bin/conda shell.bash hook)"
 conda activate py310
 
 torchrun \
-    --nnodes=1 \
-    --nproc_per_node=${nproc_per_node} \
+    --nnodes=1 \  # node_f=1
+    --nproc_per_node=4 \  # node_f=1
     --rdzv_id=100 \
     --rdzv_backend=c10d \
     --rdzv_endpoint=localhost:29400 \

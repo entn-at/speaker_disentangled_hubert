@@ -19,11 +19,6 @@ model:
   name: ""
   path: "models/speechlm"
 
-  lora:
-    r: 32
-    lora_alpha: 32
-    target_modules: "all-linear"
-
 optim:
   epoch: 24
   warmup_steps: 100
