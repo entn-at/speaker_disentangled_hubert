@@ -21,7 +21,7 @@ from ..utmos.score import Score
 
 @torch.inference_mode()
 def evaluate(config):
-    dataset = load_dataset(config.dataset.name, split="test", keep_in_memory=True).with_format("torch")
+    dataset = load_dataset(config.dataset.name, "LibriTTS-R", split="test", keep_in_memory=True).with_format("torch")
     loader = torch.utils.data.DataLoader(
         dataset,
         collate_fn=get_collate_fn(

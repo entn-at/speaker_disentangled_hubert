@@ -1,4 +1,5 @@
 import random
+import re
 
 import numpy as np
 import torch
@@ -30,9 +31,40 @@ def get_lr_schedule(
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_schedule)
 
 
-def get_num_non_embed_params(model):
-    total = 0
-    for name, param in model.named_parameters():
-        if param.requires_grad and "embed_tokens" not in name and "lm_head" not in name:
-            total += param.numel()
-    return total / 1e6  # million
+def normalize_text(s: str) -> str:
+    s = s.replace("‘", "'")
+    s = s.replace("’", "'")
+    tokens = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',.?")
+    s_list = [x if x in tokens else " " for x in s]
+    s = " ".join("".join(s_list).split()).strip()
+
+    s = s.lower()
+
+    s = re.sub(r"\ban'\s", "and ", s)
+    s = re.sub(r"\baround'em\b", "around them", s)
+    s = re.sub(r"\bbewilder'd\b", "bewildered", s)
+    s = re.sub(r"\bcap'n\b", "captain", s)
+    s = re.sub(r"\bcharm'em\b", "charm them", s)
+    s = re.sub(r"\bdiff'rence\b", "difference", s)
+    s = re.sub(r"\be'en\b", "even", s)
+    s = re.sub(r"\bfetchin'\s", "fetching ", s)
+    s = re.sub(r"\bgive'em\b", "give them", s)
+    s = re.sub(r"\binv'tation", "invitation", s)
+    s = re.sub(r"\bjes'\s", "just ", s)
+    s = re.sub(r"\bmore'n\b", "more than", s)
+    s = re.sub(r"\bof'em\b", "of them", s)
+    s = re.sub(r"\bop'ning\b", "opening", s)
+    s = re.sub(r"\bpass'd\b", "passed", s)
+    s = re.sub(r"\bp'raps\b", "perhaps", s)
+    s = re.sub(r"\bshorten'd\b", "shortened", s)
+    s = re.sub(r"\bs'pose\b", "suppose", s)
+    s = re.sub(r"\btellin'\s", "telling ", s)
+    s = re.sub(r"\bvisitin'\s", "visiting ", s)
+    s = re.sub(r"\bwith'em\b", "with them", s)
+
+    s = s.capitalize()
+
+    s = re.sub(r"\bi\b", "I", s)
+    s = re.sub(r"\b '\b", "'", s)
+
+    return s

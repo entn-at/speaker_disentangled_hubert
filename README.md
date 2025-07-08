@@ -4,8 +4,8 @@
 [![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org)
 [![colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ryota-komatsu/speaker_disentangled_hubert/blob/main/demo.ipynb)
 [![arXiv](https://img.shields.io/badge/arXiv-2409.10103-<COLOR>.svg?logo=arXiv)](https://arxiv.org/abs/2409.10103)
-[![model](https://img.shields.io/badge/%F0%9F%A4%97-Models-blue)](https://huggingface.co/ryota-komatsu/s5-hubert)
-[![dataset](https://img.shields.io/badge/%F0%9F%A4%97-Datasets-blue)](https://huggingface.co/datasets/ryota-komatsu/libritts-r-s5-hubert-8192units)
+[![model](https://img.shields.io/badge/%F0%9F%A4%97-Model-blue)](https://huggingface.co/ryota-komatsu/s5-hubert)
+[![dataset](https://img.shields.io/badge/%F0%9F%A4%97-Datasets-blue)](https://huggingface.co/datasets/ryota-komatsu/s5-hubert)
 
 This is the official repository of the IEEE SLT 2024 paper [Self-Supervised Syllable Discovery Based on Speaker-Disentangled HuBERT](https://arxiv.org/abs/2409.10103).
 
@@ -33,19 +33,19 @@ from src.s5hubert import S5HubertForSyllableDiscovery
 
 wav_path = "/path/to/wav"
 
-# download a pretrained model from hugging face hub
-model = S5HubertForSyllableDiscovery.from_pretrained("ryota-komatsu/s5-hubert").cuda()
-decoder = FlowMatchingWithBigVGan.from_pretrained("ryota-komatsu/").cuda()
+# download pretrained models from hugging face hub
+encoder = S5HubertForSyllableDiscovery.from_pretrained("ryota-komatsu/s5-hubert", device_map="cuda")
+decoder = FlowMatchingWithBigVGan.from_pretrained("ryota-komatsu/s5-hubert-decoder", device_map="cuda")
 
 # load a waveform
 waveform, sr = torchaudio.load(wav_path)
 waveform = torchaudio.functional.resample(waveform, sr, 16000)
 
-# encode a waveform into pseudo-syllabic units
-batch_outputs = model(waveform.cuda())
+# encode a waveform into syllabic units
+outputs = encoder(waveform.cuda())
 
-# pseudo-syllabic units
-units = batch_outputs[0]["units"]  # [3950, 67, ..., 503]
+# syllabic units
+units = outputs[0]["units"]  # [3950, 67, ..., 503]
 units = units.unsqueeze(0) + 1  # 0: pad
 
 # unit-to-speech synthesis
@@ -70,6 +70,7 @@ dataset_root=data  # be consistent with dataset.root in a config file
 
 sh scripts/download_librispeech.sh ${dataset_root}
 sh scripts/download_libritts.sh ${dataset_root}
+sh scripts/download_librilight.sh ${dataset_root}  # 7TB
 sh scripts/download_slm21.sh  # download sWUGGY and sBLIMP
 ```
 
@@ -114,12 +115,10 @@ python main_unit2speech.py train_flow_matching --config=configs/unit2speech/defa
 
 ## Speech language modeling
 
-Set the number of GPUs to `nproc_per_node` to enable multi-GPU training.
-
 ```shell
-nproc_per_node=1
+GROUP_NAME=
 
-qsub scripts/run_speechlm.bash configs/speechlm/default.yaml ${nproc_per_node}
+qsub -g ${GROUP_NAME} scripts/run_speechlm.bash configs/speechlm/default.yaml
 python main_speechlm.py eval --config=configs/speechlm/default.yaml
 ```
 

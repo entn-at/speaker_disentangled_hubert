@@ -3,7 +3,7 @@
 # setup
 # conda create -y -n vghubert python=3.10.14 pip=24.0
 # conda activate vghubert
-# pip install -r requirements/requirements_for_vghubert.txt
+# pip install -r requirements/vghubert.txt
 
 if [ ! -d models/vg-hubert_3 ]
 then

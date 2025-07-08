@@ -15,21 +15,21 @@ def evaluate(config):
     model = AutoModelForCausalLM.from_pretrained(config.model.path).cuda()
     tokenizer = AutoTokenizer.from_pretrained(config.model.path)
 
-    swuggy = load_dataset(config.dataset.swuggy, split="test")
+    swuggy = load_dataset(config.dataset.name, "sWUGGY", split="test")
     swuggy_loader = torch.utils.data.DataLoader(
         swuggy,
         batch_size=config.dataloader.batch_size_per_device,
         collate_fn=get_collate_fn(tokenizer),
     )
 
-    sblimp = load_dataset(config.dataset.sblimp, split="test")
+    sblimp = load_dataset(config.dataset.name, "sBLIMP", split="test")
     sblimp_loader = torch.utils.data.DataLoader(
         sblimp,
         batch_size=config.dataloader.batch_size_per_device,
         collate_fn=get_collate_fn(tokenizer),
     )
 
-    tSC = load_dataset(config.dataset.tSC, split="test")
+    tSC = load_dataset(config.dataset.name, "tSC", split="test")
     tSC_loader = torch.utils.data.DataLoader(
         tSC,
         batch_size=config.dataloader.batch_size_per_device,

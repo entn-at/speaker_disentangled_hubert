@@ -3,7 +3,7 @@
 # setup
 # conda create -y -n sdhubert python=3.10.14 pip=24.0
 # conda activate sdhubert
-# pip install -r requirements/requirements_for_sdhubert.txt
+# pip install -r requirements/sdhubert.txt
 
 dataset_root=${1:-data}
 

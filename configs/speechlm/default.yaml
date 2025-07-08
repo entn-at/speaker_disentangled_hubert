@@ -2,14 +2,13 @@ dataset:
   wav_dir: ""
   ext_audio: ".flac"
 
-  train: ""
-  swuggy: "ryota-komatsu/swuggy-s5-hubert-8192units"  # lexical
-  sblimp: "ryota-komatsu/sblimp-s5-hubert-8192units"  # syntactic
-  tSC: "ryota-komatsu/tSC-s5-hubert-8192units"
+  train: "data/Libri-Light"
+  name: "ryota-komatsu/s5-hubert"
 
   HF_HOME: "~/.cache/huggingface"
   APP_DIR: "data/zr-data"
   tSC_DIR: "data/tSC"
+
   result_dir: "results/speechlm"
 
 dataloader:

@@ -27,14 +27,14 @@ def validate(config, model, tokenizer, step: int, writer: SummaryWriter):
     if not Path(config.dataset.result_dir).is_dir():
         subprocess.run(["zrc", "submission:init", "sLM21", config.dataset.result_dir], env=os.environ)
 
-    swuggy = load_dataset(config.dataset.swuggy, split="dev")
+    swuggy = load_dataset(config.dataset.name, "sWUGGY", split="dev")
     swuggy_loader = torch.utils.data.DataLoader(
         swuggy,
         batch_size=config.dataloader.batch_size_per_device,
         collate_fn=get_collate_fn(tokenizer),
     )
 
-    sblimp = load_dataset(config.dataset.sblimp, split="dev")
+    sblimp = load_dataset(config.dataset.name, "sBLIMP", split="dev")
     sblimp_loader = torch.utils.data.DataLoader(
         sblimp,
         batch_size=config.dataloader.batch_size_per_device,
@@ -101,7 +101,7 @@ def train(config):
         assert unit not in vocab
     tokenizer.add_tokens(units)
 
-    trainset = load_dataset(config.dataset.train, keep_in_memory=True)
+    trainset = load_dataset(config.dataset.name, "Libri-Light", split="train", keep_in_memory=True)
     sampler = DistributedSampler(trainset) if dist.is_initialized() else None
     train_loader = DataLoader(
         trainset,
@@ -116,7 +116,7 @@ def train(config):
     if rank == 0:
         writer = SummaryWriter(config.model.path)
 
-    model = AutoModelForCausalLM.from_pretrained(config.model.name)
+    model = AutoModelForCausalLM.from_pretrained(config.model.name, torch_dtype="auto")
     model.resize_token_embeddings(len(tokenizer))
     model.requires_grad_(False)
     model.get_input_embeddings().requires_grad_(True)

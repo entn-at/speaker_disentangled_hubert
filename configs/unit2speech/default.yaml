@@ -5,7 +5,7 @@ path:
   result: "results/unit2speech/default.csv"
 
 dataset:
-  name: "ryota-komatsu/libritts-r-s5-hubert-8192units"  # https://huggingface.co/datasets
+  name: "ryota-komatsu/s5-hubert"  # https://huggingface.co/datasets
   wav_dir: "data/LibriTTS_R_16k" # ${root}/train-clean-100, train-clean-360, ...
   wav_dir_orig: "data/LibriTTS_R"  # if wav_dir == wav_dir_orig, original wav files are overwritten with 16 kHz waveforms
   spectrogram_dir: "data/LibriTTS_R_16k/spectrogram"  # 34GB for BigVGAN
@@ -16,14 +16,14 @@ dataset:
 flow_matching:
   model_name_or_path: "models/flow_matching"
   batch_size: 200 # work with a single 48GB VRAM GPU
-  num_workers: 16
-  epoch: 400
+  num_workers: 2
+  epoch: 250
   warmup_steps: 1000
   lr: 0.001
   lr_min: 0.0001
   max_norm: 0.1
   summary_interval: 100
-  save_interval_epoch: 100
+  save_interval_epoch: 50
 
   # src.flow_matching.configs.FlowMatchingConfig
   vocab_size: 8192

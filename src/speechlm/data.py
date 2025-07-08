@@ -60,7 +60,7 @@ def get_tokenize_fn(encoder, data_dir):
 
 
 def tokenize_eval(config):
-    from datasets import DatasetDict, Features, Sequence, Value, load_dataset
+    from datasets import Audio, DatasetDict, Features, Sequence, Value, load_dataset
 
     from ..s5hubert import S5HubertForSyllableDiscovery
 
@@ -78,46 +78,64 @@ def tokenize_eval(config):
     sblimp_test_paths = glob.glob(os.path.join(sblimp_test_dir, "*.wav"))
     tSC_test_paths = glob.glob(os.path.join(tSC_dir, "*.wav"))
 
-    swuggy_dev = load_dataset("audiofolder", data_files=swuggy_dev_paths, split="train").with_format("torch")
-    sblimp_dev = load_dataset("audiofolder", data_files=sblimp_dev_paths, split="train").with_format("torch")
-    swuggy_test = load_dataset("audiofolder", data_files=swuggy_test_paths, split="train").with_format("torch")
-    sblimp_test = load_dataset("audiofolder", data_files=sblimp_test_paths, split="train").with_format("torch")
-    tSC_test = load_dataset("audiofolder", data_files=tSC_test_paths, split="train").with_format("torch")
+    features = Features(
+        {
+            "audio": Audio(16000),
+            "id": Value("string"),
+            "units": Sequence(Value("int32")),
+            "durations": Sequence(Value("int32")),
+        }
+    )
+
+    swuggy_dev = load_dataset("audiofolder", data_files=swuggy_dev_paths, split="train", features=features)
+    sblimp_dev = load_dataset("audiofolder", data_files=sblimp_dev_paths, split="train", features=features)
+    swuggy_test = load_dataset("audiofolder", data_files=swuggy_test_paths, split="train", features=features)
+    sblimp_test = load_dataset("audiofolder", data_files=sblimp_test_paths, split="train", features=features)
+    tSC_test = load_dataset("audiofolder", data_files=tSC_test_paths, split="train", features=features)
 
     encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path).cuda()
 
     map_kwargs = dict(batched=True, batch_size=1, remove_columns="audio")
 
-    swuggy_dev = swuggy_dev.map(get_tokenize_fn(encoder, swuggy_dev_dir), **map_kwargs)
-    sblimp_dev = sblimp_dev.map(get_tokenize_fn(encoder, sblimp_dev_dir), **map_kwargs)
-    swuggy_test = swuggy_test.map(get_tokenize_fn(encoder, swuggy_test_dir), **map_kwargs)
-    sblimp_test = sblimp_test.map(get_tokenize_fn(encoder, sblimp_test_dir), **map_kwargs)
-    tSC_test = tSC_test.map(get_tokenize_fn(encoder, tSC_dir), **map_kwargs)
+    swuggy_dev = swuggy_dev.with_format("torch").map(get_tokenize_fn(encoder, swuggy_dev_dir), **map_kwargs)
+    sblimp_dev = sblimp_dev.with_format("torch").map(get_tokenize_fn(encoder, sblimp_dev_dir), **map_kwargs)
+    swuggy_test = swuggy_test.with_format("torch").map(get_tokenize_fn(encoder, swuggy_test_dir), **map_kwargs)
+    sblimp_test = sblimp_test.with_format("torch").map(get_tokenize_fn(encoder, sblimp_test_dir), **map_kwargs)
+    tSC_test = tSC_test.with_format("torch").map(get_tokenize_fn(encoder, tSC_dir), **map_kwargs)
 
     swuggy = DatasetDict({"dev": swuggy_dev, "test": swuggy_test})
     sblimp = DatasetDict({"dev": sblimp_dev, "test": sblimp_test})
     tSC = DatasetDict({"test": tSC_test})
 
-    swuggy.push_to_hub(config.dataset.swuggy)
-    sblimp.push_to_hub(config.dataset.sblimp)
-    tSC.push_to_hub(config.dataset.tSC)
+    swuggy.push_to_hub(config.dataset.name, "sWUGGY")
+    sblimp.push_to_hub(config.dataset.name, "sBLIMP")
+    tSC.push_to_hub(config.dataset.name, "tSC")
 
 
 def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
     os.environ["HF_HOME"] = str(Path(config.dataset.HF_HOME).expanduser())
 
-    from datasets import DatasetDict, Features, Sequence, Value, load_dataset
+    from datasets import Audio, Features, Sequence, Value, load_dataset
 
     from ..s5hubert import S5HubertForSyllableDiscovery
+
+    features = Features(
+        {
+            "audio": Audio(16000),
+            "id": Value("string"),
+            "units": Sequence(Value("int32")),
+            "durations": Sequence(Value("int32")),
+        }
+    )
 
     if Path(config.dataset.wav_dir).is_dir():
         data_files = sorted(
             glob.glob(os.path.join(config.dataset.wav_dir, "**/*" + config.dataset.ext_audio), recursive=True)
         )
-        dataset = load_dataset("audiofolder", data_files=data_files, split="train")
+        dataset = load_dataset("audiofolder", data_files=data_files, split="train", features=features)
         data_dir = config.dataset.wav_dir
     else:
-        dataset = load_dataset(config.dataset.wav_dir, split="train")
+        dataset = load_dataset(config.dataset.wav_dir, split="train", features=features)
         data_dir = "/"
 
     encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path).cuda()
