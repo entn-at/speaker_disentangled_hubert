@@ -23,7 +23,7 @@ class FlowMatchingConfig(PretrainedConfig):
         std: float = 2.2615,
         predict_duration: bool = True,
         dt: float = 0.1,
-        cfg_strength: float = 0.5,
+        cfg_strength: float = 0.7,
         **kwargs,
     ):
         self.vocab_size = vocab_size

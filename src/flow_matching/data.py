@@ -201,7 +201,7 @@ def tokenize_dataset(config):
     testset = _tokenize(encoder, test_loader)
 
     dataset = DatasetDict({"train": trainset, "dev": devset, "test": testset})
-    dataset.push_to_hub(config.dataset.name)
+    dataset.push_to_hub(config.dataset.name, "LibriTTS-R")
 
 
 def _tokenize(encoder, dataloader: torch.utils.data.DataLoader):
