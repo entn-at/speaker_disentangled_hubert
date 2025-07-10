@@ -91,25 +91,6 @@ class LibriTTS_R(SpeechDataset):
         return item
 
 
-class LibriSpeech(SpeechDataset):
-    def __getitem__(self, n: int) -> Dict[str, Any]:
-        item = super().__getitem__(n)
-
-        # transcript
-        split, speaker_id, chap_id, utterance_id = item["name"].split("/")
-        file = self.txt_dir / split / speaker_id / chap_id / f"{speaker_id}-{chap_id}.trans.txt"
-
-        with open(file) as f:
-            for line in f:
-                id, transcript = line.rstrip().split(" ", maxsplit=1)
-                if id == utterance_id:
-                    break
-
-        item["transcript"] = transcript
-
-        return item
-
-
 def get_collate_fn(
     wav_dir: Optional[str] = None,
     ext_audio: str = ".wav",
