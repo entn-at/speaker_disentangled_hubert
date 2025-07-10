@@ -13,6 +13,8 @@ dataset:
   ext_audio: ".wav"
   ext_txt: ".normalized.txt"
 
+  eval_dir: "data/LibriSpeech/test-clean"
+
 flow_matching:
   model_name_or_path: "models/flow_matching"
   batch_size: 200 # work with a single 48GB VRAM GPU
@@ -94,6 +96,9 @@ vocoder:
 
 speech2unit:
   model_name_or_path: "ryota-komatsu/s5-hubert"
+
+unit2speech:
+  model_name_or_path: "ryota-komatsu/s5-hubert-decoder"
 
 asr:
   model_name_or_path: "openai/whisper-large-v3"

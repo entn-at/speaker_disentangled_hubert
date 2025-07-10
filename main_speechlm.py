@@ -21,7 +21,7 @@ class TaskRunner:
         config = OmegaConf.load(config)
         train(config)
 
-    def eval(self, config: str = "configs/speechlm/default.yaml"):
+    def evaluate(self, config: str = "configs/speechlm/default.yaml"):
         from src.speechlm.eval import evaluate
 
         config = OmegaConf.load(config)

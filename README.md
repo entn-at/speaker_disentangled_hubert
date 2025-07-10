@@ -119,7 +119,7 @@ python main_unit2speech.py train_flow_matching --config=configs/unit2speech/defa
 GROUP_NAME=
 
 qsub -g ${GROUP_NAME} scripts/run_speechlm.bash configs/speechlm/default.yaml
-python main_speechlm.py eval --config=configs/speechlm/default.yaml
+python main_speechlm.py evaluate --config=configs/speechlm/default.yaml
 ```
 
 ## Citation
