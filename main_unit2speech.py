@@ -3,23 +3,11 @@ from omegaconf import OmegaConf
 
 
 class TaskRunner:
-    def resample(self, config: str = "configs/unit2speech/default.yaml"):
-        from src.flow_matching.data import resample
+    def tokenize(self, config: str = "configs/unit2speech/default.yaml"):
+        from src.flow_matching.data import tokenize
 
         config = OmegaConf.load(config)
-        resample(config)
-
-    def extract_features(self, config: str = "configs/unit2speech/default.yaml"):
-        from src.flow_matching.data import extract_features
-
-        config = OmegaConf.load(config)
-        extract_features(config)
-
-    def tokenize_dataset(self, config: str = "configs/unit2speech/default.yaml"):
-        from src.flow_matching.data import tokenize_dataset
-
-        config = OmegaConf.load(config)
-        tokenize_dataset(config)
+        tokenize(config)
 
     def train_bigvgan(self, config: str = "configs/unit2speech/default.yaml"):
         from src.bigvgan.train import train_bigvgan

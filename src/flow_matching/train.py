@@ -79,6 +79,7 @@ def train_flow_matching(config):
         [
             load_dataset(config.dataset.name, "LibriTTS-R", split="train", keep_in_memory=True),
             load_dataset(config.dataset.name, "Hi-Fi-CAPTAIN", split="train", keep_in_memory=True),
+            load_dataset(config.dataset.name, "DailyTalk", split="train", keep_in_memory=True),
         ]
     ).with_format("torch")
     dev_set = load_dataset(config.dataset.name, "LibriTTS-R", split="dev", keep_in_memory=True).with_format("torch")
