@@ -71,7 +71,7 @@ def tokenize(config):
 
     features = Features(
         {
-            "audio": Audio(),
+            "audio": Audio(sampling_rate=16000),
             "id": Value("string"),
             "units": Sequence(Value("int32")),
             "durations": Sequence(Value("int32")),
@@ -86,21 +86,21 @@ def tokenize(config):
         "dev": glob.glob(os.path.join(config.dataset.wav_dir, "dev-clean/**/*.wav"), recursive=True),
     }
     dataset = load_dataset("audiofolder", data_files=data_files, features=features)
-    dataset = dataset.with_format("torch").cast_column("audio", Audio(sampling_rate=16000))
+    dataset = dataset.with_format("torch")
     dataset = dataset.map(get_tokenize_fn(encoder, config.dataset.wav_dir, ".normalized.txt"), remove_columns="audio")
     dataset.push_to_hub(config.dataset.name, "LibriTTS-R")
 
     # Hi-Fi-CAPTAIN
     data_files = {"train": glob.glob(os.path.join(config.dataset.hfc_dir, "**/*.wav"), recursive=True)}
     dataset = load_dataset("audiofolder", data_files=data_files, features=features)
-    dataset = dataset.with_format("torch").cast_column("audio", Audio(sampling_rate=16000))
+    dataset = dataset.with_format("torch")
     dataset = dataset.map(get_tokenize_fn(encoder, config.dataset.hfc_dir, ""), remove_columns="audio")
     dataset.push_to_hub(config.dataset.name, "Hi-Fi-CAPTAIN")
 
     # DailyTalk
     data_files = {"train": glob.glob(os.path.join(config.dataset.dailytalk_dir, "**/*.wav"), recursive=True)}
     dataset = load_dataset("audiofolder", data_files=data_files, features=features)
-    dataset = dataset.with_format("torch").cast_column("audio", Audio(sampling_rate=16000))
+    dataset = dataset.with_format("torch")
     dataset = dataset.map(get_tokenize_fn(encoder, config.dataset.dailytalk_dir, ".txt"), remove_columns="audio")
     dataset.push_to_hub(config.dataset.name, "DailyTalk")
 
@@ -130,15 +130,12 @@ def get_tokenize_fn(encoder, data_dir, ext_txt: str = ".normalized.txt"):
             with open(txt_path) as g:
                 transcript = g.read().rstrip()
 
-        example.update(
-            {
-                "id": id,
-                "units": outputs[0]["units"].tolist(),
-                "durations": outputs[0]["durations"].tolist(),
-                "transcript": transcript,
-                "spectrogram": spectrogram_labels,
-            }
-        )
-        return example
+        return {
+            "id": id,
+            "units": outputs[0]["units"].tolist(),
+            "durations": outputs[0]["durations"].tolist(),
+            "transcript": transcript,
+            "spectrogram": spectrogram_labels,
+        }
 
     return _tokenize

@@ -41,7 +41,7 @@ def get_tokenize_fn(encoder, data_dir):
     def _tokenize(batch: Dict[str, list]):
         input_values = [item["array"] for item in batch["audio"]]
         attention_mask = [torch.ones_like(item["array"], dtype=torch.long) for item in batch["audio"]]
-        batch["id"] = [
+        id = [
             str(Path(item["path"]).relative_to(data_dir).with_suffix("")) if "path" in item else ""
             for item in batch["audio"]
         ]
@@ -51,10 +51,10 @@ def get_tokenize_fn(encoder, data_dir):
 
         outputs = encoder(input_values.cuda(), attention_mask.cuda())
 
-        batch["units"] = [output["units"].tolist() for output in outputs]
-        batch["durations"] = [output["durations"].tolist() for output in outputs]
+        units = [output["units"].tolist() for output in outputs]
+        durations = [output["durations"].tolist() for output in outputs]
 
-        return batch
+        return {"id": id, "units": units, "durations": durations}
 
     return _tokenize
 
@@ -80,7 +80,7 @@ def tokenize_eval(config):
 
     features = Features(
         {
-            "audio": Audio(16000),
+            "audio": Audio(sampling_rate=16000),
             "id": Value("string"),
             "units": Sequence(Value("int32")),
             "durations": Sequence(Value("int32")),
@@ -121,7 +121,7 @@ def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
 
     features = Features(
         {
-            "audio": Audio(16000),
+            "audio": Audio(sampling_rate=16000),
             "id": Value("string"),
             "units": Sequence(Value("int32")),
             "durations": Sequence(Value("int32")),
