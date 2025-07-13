@@ -18,7 +18,7 @@ flow_matching:
   model_name_or_path: "models/flow_matching"
   batch_size: 200 # work with a single 48GB VRAM GPU
   num_workers: 2
-  epoch: 250
+  epoch: 200
   warmup_steps: 1000
   lr: 0.001
   lr_min: 0.0001

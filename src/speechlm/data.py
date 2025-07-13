@@ -4,7 +4,10 @@ from pathlib import Path
 from typing import Any, Dict
 
 import torch
+from datasets import Audio, DatasetDict, Features, Sequence, Value, load_dataset
 from torch.nn.utils.rnn import pad_sequence
+
+from ..s5hubert import S5HubertForSyllableDiscovery
 
 
 def get_collate_fn(
@@ -60,10 +63,6 @@ def get_tokenize_fn(encoder, data_dir):
 
 
 def tokenize_eval(config):
-    from datasets import Audio, DatasetDict, Features, Sequence, Value, load_dataset
-
-    from ..s5hubert import S5HubertForSyllableDiscovery
-
     app_dir = Path(config.dataset.APP_DIR).expanduser()
     tSC_dir = Path(config.dataset.tSC_DIR)
 
@@ -113,12 +112,6 @@ def tokenize_eval(config):
 
 
 def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
-    os.environ["HF_HOME"] = str(Path(config.dataset.HF_HOME).expanduser())
-
-    from datasets import Audio, Features, Sequence, Value, load_dataset
-
-    from ..s5hubert import S5HubertForSyllableDiscovery
-
     features = Features(
         {
             "audio": Audio(sampling_rate=16000),
