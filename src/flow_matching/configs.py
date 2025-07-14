@@ -8,7 +8,7 @@ from ..bigvgan.bigvgan import BigVGanConfig
 class FlowMatchingConfig(PretrainedConfig):
     def __init__(
         self,
-        vocab_size: int = 8192,
+        vocab_size: int = 16384,
         dim_in: int = 80,
         dim_cond_emb: int = 768,
         hidden_size: int = 256,

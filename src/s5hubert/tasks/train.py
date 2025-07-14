@@ -196,9 +196,8 @@ def train(config):
             scaler.scale(loss).backward()
 
             # gradient clipping
-            if config.optim.max_norm is not None:
-                scaler.unscale_(optimizer)
-                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.optim.max_norm)
+            scaler.unscale_(optimizer)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.optim.max_norm)
 
             # update student
             scaler.step(optimizer)
@@ -219,8 +218,7 @@ def train(config):
             writer.add_scalar("train/loss", loss.item(), step)
             writer.add_scalar("train/lr", lr, step)
             writer.add_scalar("train/scale", scale, step)
-            if config.optim.max_norm is not None:
-                writer.add_scalar("train/grad_norm", grad_norm.item(), step)
+            writer.add_scalar("train/grad_norm", grad_norm.item(), step)
 
             if step == warmup_steps:
                 model.defrost_transformer_encoder()

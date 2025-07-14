@@ -1,11 +1,10 @@
 import glob
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import librosa
 import torch
-import torchaudio
 from datasets import Array2D, Audio, Features, Sequence, Value, load_dataset
 from torch.nn.utils.rnn import pad_sequence
 
@@ -13,57 +12,24 @@ from ..bigvgan.data import mel_spectrogram
 from ..s5hubert import S5HubertForSyllableDiscovery
 
 
-def get_collate_fn(
-    wav_dir: Optional[str] = None,
-    ext_audio: str = ".wav",
-):
-    def parse_item(item: Dict[str, Any]):
-        input_ids = item["units"] + 1  # 0: pad
-        spectrogram_labels = item["spectrogram"]
-        durations = item["durations"]
-        transcript = item["transcript"]
-        id = item["id"]
-        wav = torch.zeros(1)  # dummy
+def collate_fn(batch) -> Dict[str, Any]:
+    input_ids = [item["units"] + 1 for item in batch]  # 0: pad
+    spectrogram_labels = [item["spectrogram"] for item in batch]
+    duration_labels = [item["durations"] for item in batch]
+    transcripts = [item["transcript"] for item in batch]
+    names = [item["id"] for item in batch]
 
-        if wav_dir:
-            wav_path = os.path.join(wav_dir, id + ext_audio)
-            wav, sr = torchaudio.load(wav_path)
-            wav = wav.squeeze(0)
+    input_ids = pad_sequence(input_ids, batch_first=True)
+    spectrogram_labels = pad_sequence(spectrogram_labels, batch_first=True, padding_value=-100)
+    duration_labels = pad_sequence(duration_labels, batch_first=True)
 
-        return input_ids, spectrogram_labels, durations, transcript, id, wav
-
-    def collate_fn(batch):
-        input_ids = []
-        spectrogram_labels = []
-        duration_labels = []
-        transcripts = []
-        names = []
-        input_values = []
-
-        for item in batch:
-            units, spectrogram, durations, transcript, id, wav = parse_item(item)
-            input_ids.append(units)
-            spectrogram_labels.append(spectrogram)
-            duration_labels.append(durations)
-            transcripts.append(transcript)
-            names.append(id)
-            input_values.append(wav)
-
-        input_ids = pad_sequence(input_ids, batch_first=True)
-        spectrogram_labels = pad_sequence(spectrogram_labels, batch_first=True, padding_value=-100)
-        duration_labels = pad_sequence(duration_labels, batch_first=True)
-        input_values = pad_sequence(input_values, batch_first=True)
-
-        return {
-            "input_ids": input_ids,
-            "spectrogram_labels": spectrogram_labels,
-            "duration_labels": duration_labels,
-            "transcripts": transcripts,
-            "names": names,
-            "input_values": input_values,
-        }
-
-    return collate_fn
+    return {
+        "input_ids": input_ids,
+        "spectrogram_labels": spectrogram_labels,
+        "duration_labels": duration_labels,
+        "transcripts": transcripts,
+        "names": names,
+    }
 
 
 def tokenize(config):
@@ -82,12 +48,14 @@ def tokenize(config):
 
     # LibriTTS-R
     data_files = {
-        "train": glob.glob(os.path.join(config.dataset.wav_dir, "train-*/**/*.wav"), recursive=True),
-        "dev": glob.glob(os.path.join(config.dataset.wav_dir, "dev-clean/**/*.wav"), recursive=True),
+        "train": glob.glob(os.path.join(config.dataset.libritts_dir, "train-*/**/*.wav"), recursive=True),
+        "dev": glob.glob(os.path.join(config.dataset.libritts_dir, "dev-clean/**/*.wav"), recursive=True),
     }
     dataset = load_dataset("audiofolder", data_files=data_files, features=features)
     dataset = dataset.with_format("torch")
-    dataset = dataset.map(get_tokenize_fn(encoder, config.dataset.wav_dir, ".normalized.txt"), remove_columns="audio")
+    dataset = dataset.map(
+        get_tokenize_fn(encoder, config.dataset.libritts_dir, ".normalized.txt"), remove_columns="audio"
+    )
     dataset.push_to_hub(config.dataset.name, "LibriTTS-R")
 
     # Hi-Fi-CAPTAIN

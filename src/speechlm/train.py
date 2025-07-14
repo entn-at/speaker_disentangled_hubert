@@ -185,9 +185,8 @@ def train(config):
             scaler.scale(loss).backward()
 
             # gradient clipping
-            if config.optim.max_norm is not None:
-                scaler.unscale_(optimizer)
-                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.optim.max_norm)
+            scaler.unscale_(optimizer)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.optim.max_norm)
 
             # update model
             scaler.step(optimizer)
@@ -207,8 +206,7 @@ def train(config):
                 writer.add_scalar("train/loss", loss.item(), global_step)
                 writer.add_scalar("train/lr", lr, global_step)
                 writer.add_scalar("train/scale", scale, global_step)
-                if config.optim.max_norm is not None:
-                    writer.add_scalar("train/grad_norm", grad_norm.item(), global_step)
+                writer.add_scalar("train/grad_norm", grad_norm.item(), global_step)
 
                 # trace the peak GPU memory
                 writer.add_scalar("memory/allocated (GB)", torch.cuda.max_memory_allocated() / 2**30, global_step)

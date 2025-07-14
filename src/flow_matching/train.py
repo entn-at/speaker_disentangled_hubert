@@ -9,7 +9,7 @@ from transformers import AutoConfig, AutoModel, AutoModelForSpeechSeq2Seq, AutoP
 
 from ..bigvgan.bigvgan import BigVGan, BigVGanConfig
 from .configs import FlowMatchingConfig
-from .data import get_collate_fn
+from .data import collate_fn
 from .models import FlowMatchingModel
 from .utils import fix_random_seed, get_input_embeddings, get_lr_schedule
 
@@ -46,17 +46,12 @@ def validate(config, dataloader, model: FlowMatchingModel, step: int, writer: Su
     for n, batch in enumerate(dataloader):
         spectrogram = model.synthesize(batch["input_ids"].cuda())
         hyp_wav = vocoder(spectrogram)
-
         hyp_wav = hyp_wav.cpu().squeeze(0).numpy()
-        ref_wav = batch["input_values"].squeeze(0).numpy()
-
         hyp = pipe(hyp_wav, generate_kwargs={"language": "english"}, return_timestamps=True)["text"]
-
         hyps.append(hyp)
 
         if n < 5:
             writer.add_audio(f"hyp/{batch['names'][0]}", hyp_wav, step, 16000)
-            writer.add_audio(f"ref/{batch['names'][0]}", ref_wav, step, 16000)
 
     transcripts = [processor.tokenizer.normalize(transcript) for transcript in dataloader.dataset["transcript"]]
     hyps = [processor.tokenizer.normalize(hyp) for hyp in hyps]
@@ -68,6 +63,7 @@ def validate(config, dataloader, model: FlowMatchingModel, step: int, writer: Su
     writer.add_scalar("dev/CER", cer_hyp, step)
 
     del vocoder
+    del pipe
     del asr
     torch.cuda.empty_cache()
 
@@ -89,17 +85,12 @@ def train_flow_matching(config):
         batch_size=config.flow_matching.batch_size,
         shuffle=True,
         num_workers=config.flow_matching.num_workers,
-        collate_fn=get_collate_fn(
-            ext_audio=config.dataset.ext_audio,
-        ),
+        collate_fn=collate_fn,
     )
     dev_loader = torch.utils.data.DataLoader(
         dev_set,
         num_workers=config.flow_matching.num_workers,
-        collate_fn=get_collate_fn(
-            wav_dir=config.dataset.wav_dir,
-            ext_audio=config.dataset.ext_audio,
-        ),
+        collate_fn=collate_fn,
     )
 
     model = FlowMatchingModel(
@@ -153,9 +144,8 @@ def train_flow_matching(config):
             scaler.scale(loss).backward()
 
             # gradient clipping
-            if config.flow_matching.max_norm is not None:
-                scaler.unscale_(optimizer)
-                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.flow_matching.max_norm)
+            scaler.unscale_(optimizer)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.flow_matching.max_norm)
 
             scaler.step(optimizer)
             scale = scaler.get_scale()
@@ -173,8 +163,7 @@ def train_flow_matching(config):
                 writer.add_scalar("train/loss", loss.item(), step)
                 writer.add_scalar("train/lr", lr, step)
                 writer.add_scalar("train/scale", scale, step)
-                if config.flow_matching.max_norm is not None:
-                    writer.add_scalar("train/grad_norm", grad_norm.item(), step)
+                writer.add_scalar("train/grad_norm", grad_norm.item(), step)
 
         if epoch % config.flow_matching.save_interval_epoch == 0:
             validate(config, dev_loader, model, step, writer)

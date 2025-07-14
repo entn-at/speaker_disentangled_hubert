@@ -6,7 +6,7 @@ path:
 
 dataset:
   name: "ryota-komatsu/s5-hubert"  # https://huggingface.co/datasets
-  wav_dir: "data/LibriTTS_R" # ${root}/train-clean-100, train-clean-360, ...
+  libritts_dir: "data/LibriTTS_R" # ${root}/train-clean-100, train-clean-360, ...
   hfc_dir: "data/hi-fi-captain/en-US"
   dailytalk_dir: "data/dailytalk/data"
 
@@ -27,10 +27,10 @@ flow_matching:
   save_interval_epoch: 50
 
   # src.flow_matching.configs.FlowMatchingConfig
-  vocab_size: 8192
+  vocab_size: 16384
   dim_in: 80
   dim_cond_emb: 768
-  hidden_size: 256
+  hidden_size: 192
   depth: 4
   heads: 2
   intermediate_size: 768

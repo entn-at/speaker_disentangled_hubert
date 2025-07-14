@@ -107,7 +107,7 @@ def train(rank, config):
         scaler_d.load_state_dict(state_dict_do["scaler_d"])
 
     trainset = MelDataset(
-        config.dataset.wav_dir,
+        config.dataset.libritts_dir,
         config.dataset.spectrogram_dir,
         config.vocoder.segment_size,
         config.vocoder.n_fft,
@@ -129,7 +129,7 @@ def train(rank, config):
 
     if rank == 0:
         validset = MelDataset(
-            config.dataset.wav_dir,
+            config.dataset.libritts_dir,
             config.dataset.spectrogram_dir,
             config.vocoder.segment_size,
             config.vocoder.n_fft,
