@@ -1,8 +1,10 @@
 dataset:
-  wav_dir: ""
+  ll_dir: "data/librilight"
+  lh_dir: "data/libriheavy"
   ext_audio: ".flac"
+  manifest_prefix: "data/manifest"
 
-  train: "data/Libri-Light"
+  train: "pkufool/libriheavy_long"
   name: "ryota-komatsu/s5-hubert"
 
   HF_HOME: "~/.cache/huggingface"

@@ -1,13 +1,18 @@
 import glob
+import json
+import math
 import os
 from pathlib import Path
 from typing import Any, Dict
 
 import torch
+import torchaudio
 from datasets import Audio, DatasetDict, Features, Sequence, Value, load_dataset
 from torch.nn.utils.rnn import pad_sequence
+from tqdm import tqdm
 
 from ..s5hubert import S5HubertForSyllableDiscovery
+from .utils import normalize_text
 
 
 def get_collate_fn(
@@ -92,7 +97,7 @@ def tokenize_eval(config):
     sblimp_test = load_dataset("audiofolder", data_files=sblimp_test_paths, split="train", features=features)
     tSC_test = load_dataset("audiofolder", data_files=tSC_test_paths, split="train", features=features)
 
-    encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path).cuda()
+    encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path, device_map="cuda")
 
     map_kwargs = dict(batched=True, batch_size=1, remove_columns="audio")
 
@@ -112,30 +117,34 @@ def tokenize_eval(config):
 
 
 def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
-    features = Features(
-        {
-            "audio": Audio(sampling_rate=16000),
-            "id": Value("string"),
-            "units": Sequence(Value("int32")),
-            "durations": Sequence(Value("int32")),
-        }
-    )
-
-    if Path(config.dataset.wav_dir).is_dir():
-        data_files = sorted(
-            glob.glob(os.path.join(config.dataset.wav_dir, "**/*" + config.dataset.ext_audio), recursive=True)
-        )
-        dataset = load_dataset("audiofolder", data_files=data_files, split="train", features=features)
-        data_dir = config.dataset.wav_dir
-    else:
-        dataset = load_dataset(config.dataset.wav_dir, split="train", features=features)
-        data_dir = "/"
-
-    encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path).cuda()
-
-    map_kwargs = dict(batched=True, batch_size=config.speech2unit.batch_size, remove_columns=["audio", "label"])
-
+    dataset = load_dataset(config.dataset.train, split="train")
     dataset = dataset.shard(num_shards=num_shards, index=shard_index)
-    dataset = dataset.with_format("torch")
-    dataset = dataset.map(get_tokenize_fn(encoder, data_dir), **map_kwargs)
-    dataset.save_to_disk(config.dataset.train, split=f"train.{shard_index}")
+
+    encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path, device_map="cuda")
+
+    with open(f"{config.dataset.manifest_prefix}{shard_index}.json", "w") as f:
+        for example in tqdm(dataset):
+            load_path = os.path.join(config.dataset.ll_dir, example["recording"]["id"] + config.dataset.ext_audio)
+            save_path = os.path.join(config.dataset.lh_dir, example["id"] + config.dataset.ext_audio)
+            Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+
+            input_values, sr = torchaudio.load(
+                load_path,
+                frame_offset=math.floor(16000 * max(example["start"], 0)),
+                num_frames=math.floor(16000 * example["duration"]),
+            )
+            torchaudio.save(save_path, input_values, sr, encoding="PCM_S", bits_per_sample=16)
+
+            outputs = encoder(input_values.cuda())
+
+            text = example["supervisions"][0]["custom"]["texts"][0]
+            text = normalize_text(text)
+
+            manifest = {
+                "audio_filepath": save_path,
+                "text": text,
+                "id": example["id"],
+                "units": outputs[0]["units"].tolist(),
+                "durations": outputs[0]["durations"].tolist(),
+            }
+            f.write(json.dumps(manifest) + "\n")
