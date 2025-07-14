@@ -45,7 +45,9 @@ class FlowMatchingModel(PreTrainedModel):
         super().__init__(config)
         self.time_cond_mlp = TimestepEmbedding(config.hidden_size)
         self.embed_tokens = (
-            nn.Embedding(config.vocab_size + 1, config.dim_cond_emb, padding_idx=0) if embedding is None else embedding
+            nn.Embedding(config.vocab_size + 1, config.dim_cond_emb, padding_idx=config.vocab_size)
+            if embedding is None
+            else embedding
         )
         self.to_embed = nn.Linear(config.dim_in + config.dim_cond_emb, config.hidden_size)
 
@@ -98,7 +100,7 @@ class FlowMatchingModel(PreTrainedModel):
             # use groundtruth in training
             inputs_embeds = length_regulator(inputs_embeds, duration_labels)
 
-            attention_mask = input_ids.ne(0)
+            attention_mask = input_ids.ne(self.config.vocab_size)
             duration_predictions = duration_predictions.masked_select(attention_mask)
             duration_labels = duration_labels.masked_select(attention_mask)
             duration_labels = torch.log(duration_labels.float() + self.duration_predictor.log_domain_offset)
@@ -129,7 +131,7 @@ class FlowMatchingModel(PreTrainedModel):
             x1 (`torch.FloatTensor` of shape `(batch_size, sequence_length, dim_in)`):
                 Synthesized log mel-spectrograms.
         """
-        mask = input_ids.ne(0)
+        mask = input_ids.ne(self.config.vocab_size)
 
         inputs_embeds = self.embed_tokens(input_ids)
 

@@ -39,7 +39,7 @@ def get_eval_fn(encoder, decoder, processor, pipe, scorer, data_dir):
         example["transcript"] = processor.tokenizer.normalize(transcript)
 
         ref_wav = example["audio"]["array"].unsqueeze(0).cuda()
-        hyp_wav = decoder(encoder(ref_wav)[0]["units"].unsqueeze(0) + 1)[0]
+        hyp_wav = decoder(encoder(ref_wav)[0]["units"].unsqueeze(0))[0]
 
         ref = pipe(ref_wav.cpu().squeeze(0).numpy(), generate_kwargs={"language": "english"}, return_timestamps=True)
         hyp = pipe(hyp_wav.cpu().squeeze(0).numpy(), generate_kwargs={"language": "english"}, return_timestamps=True)

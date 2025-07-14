@@ -47,7 +47,7 @@ optim:
 
 quantizer:
   n_clusters1: 24576
-  n_clusters2: 8192
+  n_clusters2: 16384
   niter: 100
   nredo: 5
   verbose: true

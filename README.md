@@ -46,7 +46,7 @@ outputs = encoder(waveform.cuda())
 
 # syllabic units
 units = outputs[0]["units"]  # [3950, 67, ..., 503]
-units = units.unsqueeze(0) + 1  # 0: pad
+units = units.unsqueeze(0)
 
 # unit-to-speech synthesis
 audio_values = decoder(units)

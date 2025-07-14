@@ -9,7 +9,7 @@ from transformers import AutoConfig, AutoModel, AutoModelForSpeechSeq2Seq, AutoP
 
 from ..bigvgan.bigvgan import BigVGan, BigVGanConfig
 from .configs import FlowMatchingConfig
-from .data import collate_fn
+from .data import get_collate_fn
 from .models import FlowMatchingModel
 from .utils import fix_random_seed, get_input_embeddings, get_lr_schedule
 
@@ -85,12 +85,12 @@ def train_flow_matching(config):
         batch_size=config.flow_matching.batch_size,
         shuffle=True,
         num_workers=config.flow_matching.num_workers,
-        collate_fn=collate_fn,
+        collate_fn=get_collate_fn(config.flow_matching.vocab_size),
     )
     dev_loader = torch.utils.data.DataLoader(
         dev_set,
         num_workers=config.flow_matching.num_workers,
-        collate_fn=collate_fn,
+        collate_fn=get_collate_fn(config.flow_matching.vocab_size),
     )
 
     model = FlowMatchingModel(

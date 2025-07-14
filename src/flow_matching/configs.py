@@ -11,7 +11,7 @@ class FlowMatchingConfig(PretrainedConfig):
         vocab_size: int = 16384,
         dim_in: int = 80,
         dim_cond_emb: int = 768,
-        hidden_size: int = 256,
+        hidden_size: int = 192,
         depth: int = 4,
         heads: int = 2,
         intermediate_size: int = 768,
