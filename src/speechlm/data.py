@@ -57,7 +57,7 @@ def get_tokenize_fn(encoder, data_dir):
         input_values = pad_sequence(input_values, batch_first=True)
         attention_mask = pad_sequence(attention_mask, batch_first=True)
 
-        outputs = encoder(input_values.cuda(), attention_mask.cuda())
+        outputs = encoder(input_values.to(encoder.device), attention_mask.to(encoder.device))
 
         units = [output["units"].tolist() for output in outputs]
         durations = [output["durations"].tolist() for output in outputs]
@@ -135,7 +135,7 @@ def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
             )
             torchaudio.save(save_path, input_values, sr, encoding="PCM_S", bits_per_sample=16)
 
-            outputs = encoder(input_values.cuda())
+            outputs = encoder(input_values.to(encoder.device))
 
             text = example["supervisions"][0]["custom"]["texts"][0]
             text = normalize_text(text)

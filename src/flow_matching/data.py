@@ -83,7 +83,7 @@ def get_tokenize_fn(encoder, data_dir, ext_txt: str = ".normalized.txt"):
         input_values = example["audio"]["array"].numpy()
         input_values = librosa.effects.trim(input_values, top_db=20)[0]
         input_values = torch.from_numpy(input_values)
-        input_values = input_values.cuda()
+        input_values = input_values.to(encoder.device)
         input_values = input_values / input_values.abs().max() * 0.95
         input_values = input_values.unsqueeze(0)
 

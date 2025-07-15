@@ -32,7 +32,7 @@
 
 from functools import partial
 from multiprocessing import Pool
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -119,7 +119,7 @@ def mincut_torch(
     lengths: torch.Tensor,
     sec_per_frame: float = 0.02,
     sec_per_syllable: float = 0.15,
-    merge_threshold: float | None = 0.6,
+    merge_threshold: Optional[float] = 0.6,
     min_duration: int = 3,
     max_duration: int = 35,
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor], List[torch.Tensor]]:
@@ -240,7 +240,7 @@ def mincut_numpy(
     hidden_states: np.ndarray,
     sec_per_frame: float = 0.02,
     sec_per_syllable: float = 0.15,
-    merge_threshold: float | None = 0.6,
+    merge_threshold: Optional[float] = 0.6,
     min_duration: int = 3,
     max_duration: int = 35,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -282,7 +282,7 @@ def mincut_wrapper(
     ckpt_path,
     sec_per_frame: float = 0.02,
     sec_per_syllable: float = 0.15,
-    merge_threshold: float | None = 0.6,
+    merge_threshold: Optional[float] = 0.6,
     min_duration: int = 3,
     max_duration: int = 35,
 ):
@@ -310,10 +310,10 @@ def parallel_mincut(
     disable_tqdm: bool = True,
     sec_per_frame: float = 0.02,
     sec_per_syllable: float = 0.15,
-    merge_threshold: float | None = 0.6,
+    merge_threshold: Optional[float] = 0.6,
     min_duration: int = 3,
     max_duration: int = 35,
-    num_workers: int | None = None,
+    num_workers: Optional[int] = None,
 ):
     with Pool(num_workers) as p:
         for _ in tqdm(

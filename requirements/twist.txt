@@ -1,0 +1,20 @@
+# conda create -y -n py39 python=3.9.21 pip=24.0
+# conda activate py39
+# pip install -r requirements/twist.txt
+# cd src/textlesslib
+# pip install -e .
+# cd -
+--extra-index-url https://download.pytorch.org/whl/cu121
+accelerate==1.8.1
+datasets==3.6.0
+einops==0.8.1
+fairseq @ git+https://github.com/facebookresearch/fairseq.git@d9a627082fd03ec72a27a31a4e56289bfcb2e4e4
+fire
+jiwer @ git+https://github.com/jitsi/jiwer.git@c1b0d5e005431f5ce4fa6797f48639a8ccaa5042
+lightning==2.5.1
+matplotlib==3.8.4
+numpy==1.22.0
+omegaconf
+torch==2.5.1+cu121
+torchaudio==2.5.1+cu121
+transformers

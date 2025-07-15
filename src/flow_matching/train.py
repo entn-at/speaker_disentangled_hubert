@@ -24,7 +24,7 @@ def validate(config, dataloader, model: FlowMatchingModel, step: int, writer: Su
 
     torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-    vocoder = AutoModel.from_pretrained(config.vocoder.model_name_or_path).cuda()
+    vocoder = AutoModel.from_pretrained(config.vocoder.model_name_or_path, device_map="cuda")
     asr = AutoModelForSpeechSeq2Seq.from_pretrained(
         config.asr.model_name_or_path,
         torch_dtype=torch_dtype,
@@ -44,7 +44,7 @@ def validate(config, dataloader, model: FlowMatchingModel, step: int, writer: Su
     hyps = []
 
     for n, batch in enumerate(dataloader):
-        spectrogram = model.synthesize(batch["input_ids"].cuda())
+        spectrogram = model.synthesize(batch["input_ids"].to(model.device))
         hyp_wav = vocoder(spectrogram)
         hyp_wav = hyp_wav.cpu().squeeze(0).numpy()
         hyp = pipe(hyp_wav, generate_kwargs={"language": "english"}, return_timestamps=True)["text"]
@@ -137,9 +137,9 @@ def train_flow_matching(config):
         for batch in train_loader:
             with torch.autocast(model.device.type):
                 loss = model(
-                    input_ids=batch["input_ids"].cuda(),
-                    spectrogram_labels=batch["spectrogram_labels"].cuda(),
-                    duration_labels=batch["duration_labels"].cuda(),
+                    input_ids=batch["input_ids"].to(model.device),
+                    spectrogram_labels=batch["spectrogram_labels"].to(model.device),
+                    duration_labels=batch["duration_labels"].to(model.device),
                 )
             scaler.scale(loss).backward()
 

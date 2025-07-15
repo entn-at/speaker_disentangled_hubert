@@ -12,7 +12,7 @@ from .data import get_collate_fn
 
 
 def evaluate(config):
-    model = AutoModelForCausalLM.from_pretrained(config.model.path).cuda()
+    model = AutoModelForCausalLM.from_pretrained(config.model.path, device_map="cuda")
     tokenizer = AutoTokenizer.from_pretrained(config.model.path)
 
     swuggy = load_dataset(config.dataset.name, "sWUGGY", split="test")
@@ -96,8 +96,8 @@ def _eval(
     with open(out_file, "w") as f:
         for batch in loader:
             # Speech LM
-            input_ids = batch["input_ids"].cuda()
-            labels = batch["labels"].cuda()
+            input_ids = batch["input_ids"].to(model.device)
+            labels = batch["labels"].to(model.device)
             logits = model(input_ids=input_ids, labels=labels).logits.transpose(1, 2)
 
             labels = F.pad(labels, (0, 1), value=-100)

@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -106,8 +106,8 @@ class S5Hubert(nn.Module):
         self,
         teacher_input_values: torch.Tensor,
         student_input_values: torch.Tensor,
-        teacher_attention_mask: torch.Tensor | None = None,
-        student_attention_mask: torch.Tensor | None = None,
+        teacher_attention_mask: Optional[torch.Tensor] = None,
+        student_attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         # disable dropout
         self.student.feature_projection.eval()
@@ -138,8 +138,8 @@ class S5Hubert(nn.Module):
     def student_forward(
         self,
         input_values: torch.Tensor,
-        attention_mask: torch.Tensor | None = None,
-    ) -> Tuple[Tuple[torch.Tensor], torch.Tensor | None]:
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[Tuple[torch.Tensor], Optional[torch.Tensor]]:
         extract_features = self.student.feature_extractor(input_values)
         extract_features = extract_features.transpose(1, 2)
 
@@ -189,8 +189,8 @@ class S5Hubert(nn.Module):
     def teacher_forward(
         self,
         input_values: torch.Tensor,
-        attention_mask: torch.Tensor | None = None,
-    ) -> Tuple[Tuple[torch.Tensor], torch.Tensor | None]:
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[Tuple[torch.Tensor], Optional[torch.Tensor]]:
         extract_features = self.student.feature_extractor(input_values)
         extract_features = extract_features.transpose(1, 2)
 
@@ -262,7 +262,7 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
         seed: int = 0,
         deduplicate: bool = True,
         sec_per_syllable: float = 0.15,
-        merge_threshold: float | None = 0.6,
+        merge_threshold: Optional[float] = 0.6,
         min_duration: int = 3,
         max_duration: int = 35,
     ):
@@ -317,7 +317,7 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
     def extract_features(
         self,
         input_values: torch.Tensor,
-        attention_mask: torch.Tensor | None = None,
+        attention_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         extract_features = self.hubert.feature_extractor(input_values)
         extract_features = extract_features.transpose(1, 2)
@@ -359,7 +359,7 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
     def forward(
         self,
         input_values: torch.Tensor,
-        attention_mask: torch.Tensor | None = None,
+        attention_mask: Optional[torch.Tensor] = None,
     ) -> List[Dict[str, torch.Tensor]]:
         """
         Args:
@@ -464,12 +464,12 @@ class S5HubertForSequenceClassification(nn.Module):
     def forward(
         self,
         input_values: torch.Tensor,
-        attention_mask: torch.Tensor | None = None,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = True,
-        return_dict: bool | None = True,
-        labels: torch.Tensor | None = None,
-    ) -> Tuple | SequenceClassifierOutput:
+        attention_mask: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = True,
+        return_dict: Optional[bool] = True,
+        labels: Optional[torch.Tensor] = None,
+    ) -> Union[Tuple, SequenceClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
             Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,

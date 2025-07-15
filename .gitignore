@@ -3,6 +3,7 @@ __pycache__
 src/sdhubert
 src/sylber
 src/SyllableLM
+src/textlesslib
 src/utmos
 src/vghubert
 results

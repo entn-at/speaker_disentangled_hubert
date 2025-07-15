@@ -39,7 +39,10 @@ def get_eval_fn(encoder, decoder, processor, pipe, scorer, data_dir):
         example["transcript"] = processor.tokenizer.normalize(transcript)
 
         ref_wav = example["audio"]["array"].unsqueeze(0).cuda()
-        hyp_wav = decoder(encoder(ref_wav)[0]["units"].unsqueeze(0))[0]
+        if isinstance(encoder, S5HubertForSyllableDiscovery):
+            hyp_wav = decoder(encoder(ref_wav)[0]["units"].unsqueeze(0))[0]
+        else:
+            hyp_wav = decoder(encoder(ref_wav)["units"].unsqueeze(0), dur_prediction=True)
 
         ref = pipe(ref_wav.cpu().squeeze(0).numpy(), generate_kwargs={"language": "english"}, return_timestamps=True)
         hyp = pipe(hyp_wav.cpu().squeeze(0).numpy(), generate_kwargs={"language": "english"}, return_timestamps=True)
@@ -56,8 +59,26 @@ def get_eval_fn(encoder, decoder, processor, pipe, scorer, data_dir):
 
 @torch.inference_mode()
 def evaluate(config):
-    encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path, device_map="cuda")
-    decoder = FlowMatchingWithBigVGan.from_pretrained(config.unit2speech.model_name_or_path, device_map="cuda")
+    if config.speech2unit.model_name_or_path == "mhubert-base-25hz":
+        from textless.data.speech_encoder import SpeechEncoder
+        from textless.vocoders.hifigan.vocoder import CodeHiFiGANVocoder
+
+        encoder = SpeechEncoder.by_name(
+            dense_model_name=config.speech2unit.model_name_or_path,
+            quantizer_model_name=config.speech2unit.quantizer_model_name,
+            vocab_size=config.speech2unit.vocab_size,
+            deduplicate=True,
+            need_f0=False,
+            add_bos_eos=False,
+        ).cuda()
+        decoder = CodeHiFiGANVocoder.by_name(
+            dense_model_name=config.speech2unit.model_name_or_path,
+            quantizer_model_name=config.speech2unit.quantizer_model_name,
+            vocab_size=config.speech2unit.vocab_size,
+        ).cuda()
+    else:
+        encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path, device_map="cuda")
+        decoder = FlowMatchingWithBigVGan.from_pretrained(config.unit2speech.model_name_or_path, device_map="cuda")
 
     torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 

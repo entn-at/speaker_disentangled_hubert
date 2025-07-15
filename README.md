@@ -42,7 +42,7 @@ waveform, sr = torchaudio.load(wav_path)
 waveform = torchaudio.functional.resample(waveform, sr, 16000)
 
 # encode a waveform into syllabic units
-outputs = encoder(waveform.cuda())
+outputs = encoder(waveform.to(encoder.device))
 
 # syllabic units
 units = outputs[0]["units"]  # [3950, 67, ..., 503]
