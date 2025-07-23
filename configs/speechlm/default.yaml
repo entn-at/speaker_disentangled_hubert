@@ -11,26 +11,28 @@ dataset:
   APP_DIR: "data/zr-data"
   tSC_DIR: "data/tSC"
 
-  result_dir: "results/speechlm"
-
-dataloader:
-  batch_size_per_device: 1000  # effective batch size (tokens) = dataset.units_per_sample * batch_size_per_device * #GPUs
-
 model:
   name: ""
-  path: "models/speechlm"
 
-optim:
-  epoch: 24
+training_args:
+  output_dir: "models/speechlm"
+  per_device_train_batch_size: 8
+  per_device_eval_batch_size: 8
+  learning_rate: 0.0005
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.98
+  max_grad_norm: 0.5
+  num_train_epochs: 24
+  max_steps: 200000
+  lr_scheduler_type: "cosine_with_min_lr"
+  lr_scheduler_kwargs: {"min_lr": 0.00005}
   warmup_steps: 100
-  lr: 0.0005
-  lr_min: 0.00005
-  beta1: 0.9
-  beta2: 0.98
-  max_norm: 0.5
-  summary_interval: 100
-  validation_save_interval: 10000
-  total_steps: 200000
+  save_steps: 5000
+  save_total_limit: 2
+  bf16: true
+  eval_steps: 5000
+  fsdp: "full_shard"
 
 speech2unit:
   model_name_or_path: "ryota-komatsu/s5-hubert"

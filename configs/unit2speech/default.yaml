@@ -16,7 +16,7 @@ dataset:
 
 flow_matching:
   model_name_or_path: "models/flow_matching"
-  batch_size: 210 # work with a single 48GB VRAM GPU
+  batch_size: 200 # work with a single 48GB VRAM GPU
   num_workers: 2
   epoch: 200
   warmup_steps: 1000
@@ -30,7 +30,7 @@ flow_matching:
   vocab_size: 16384
   dim_in: 80
   dim_cond_emb: 768
-  hidden_size: 192
+  hidden_size: 256
   depth: 4
   heads: 2
   intermediate_size: 768

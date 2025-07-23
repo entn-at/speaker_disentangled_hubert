@@ -28,12 +28,6 @@ class TaskRunner:
 
         train(config)
 
-    def evaluate(self, config: str = "configs/speechlm/default.yaml"):
-        from src.speechlm.eval import evaluate
-
-        config = OmegaConf.load(config)
-        evaluate(config)
-
 
 if __name__ == "__main__":
     fire.Fire(TaskRunner)

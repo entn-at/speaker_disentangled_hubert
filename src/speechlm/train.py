@@ -1,92 +1,162 @@
 import os
 import subprocess
+from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
 import torch
-import torch.distributed as dist
 from datasets import load_dataset
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DataLoader, DistributedSampler
-from torch.utils.tensorboard import SummaryWriter
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from omegaconf import OmegaConf
+from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainerCallback, TrainingArguments
 
 from ..s5hubert import S5HubertForSyllableDiscovery
 from .data import get_collate_fn
 from .eval import _eval
-from .utils import fix_random_seed, get_lr_schedule
 
 
-@torch.inference_mode()
-def validate(config, model, tokenizer, step: int, writer: SummaryWriter):
-    torch.cuda.empty_cache()
-    model.eval()
+class EvaluationCallback(TrainerCallback):
+    def __init__(
+        self,
+        output_dir,
+        APP_DIR,
+        swuggy_dev_loader: torch.utils.data.DataLoader,
+        sblimp_dev_loader: torch.utils.data.DataLoader,
+        swuggy_test_loader: torch.utils.data.DataLoader,
+        sblimp_test_loader: torch.utils.data.DataLoader,
+        tSC_test_loader: torch.utils.data.DataLoader,
+    ):
+        self.output_dir = output_dir
+        self.APP_DIR = APP_DIR
+        self.swuggy_dev_loader = swuggy_dev_loader
+        self.sblimp_dev_loader = sblimp_dev_loader
+        self.swuggy_test_loader = swuggy_test_loader
+        self.sblimp_test_loader = sblimp_test_loader
+        self.tSC_test_loader = tSC_test_loader
 
-    os.environ["APP_DIR"] = str(Path(config.dataset.APP_DIR).expanduser())
+    def on_step_end(self, args, state, control, model, **kwargs):
+        if state.global_step % args.eval_steps != 0 or not state.is_world_process_zero:
+            return
 
-    if not Path(config.dataset.result_dir).is_dir():
-        subprocess.run(["zrc", "submission:init", "sLM21", config.dataset.result_dir], env=os.environ)
+        model.eval()
 
-    swuggy = load_dataset(config.dataset.name, "sWUGGY", split="dev")
-    swuggy_loader = torch.utils.data.DataLoader(
-        swuggy,
-        batch_size=config.dataloader.batch_size_per_device,
-        collate_fn=get_collate_fn(tokenizer),
-    )
+        os.environ["APP_DIR"] = str(Path(self.APP_DIR).expanduser())
 
-    sblimp = load_dataset(config.dataset.name, "sBLIMP", split="dev")
-    sblimp_loader = torch.utils.data.DataLoader(
-        sblimp,
-        batch_size=config.dataloader.batch_size_per_device,
-        collate_fn=get_collate_fn(tokenizer),
-    )
+        if not Path(self.output_dir).is_dir():
+            subprocess.run(["zrc", "submission:init", "sLM21", self.output_dir], env=os.environ)
 
-    _eval(model, swuggy_loader, Path(config.dataset.result_dir) / "lexical/dev.txt")
-    _eval(model, sblimp_loader, Path(config.dataset.result_dir) / "syntactic/dev.txt")
+        _eval(model, self.swuggy_dev_loader, Path(self.output_dir) / "lexical/dev.txt")
+        _eval(model, self.sblimp_dev_loader, Path(self.output_dir) / "syntactic/dev.txt")
 
-    subprocess.run(
-        [
-            "zrc",
-            "benchmarks:run",
-            "sLM21",
-            config.dataset.result_dir,
-            "--sets",
-            "dev",
-            "--task",
-            "lexical",
-            "syntactic",
-        ]
-    )
+        subprocess.run(
+            [
+                "zrc",
+                "benchmarks:run",
+                "sLM21",
+                self.output_dir,
+                "--sets",
+                "dev",
+                "--task",
+                "lexical",
+                "syntactic",
+            ]
+        )
 
-    df_swuggy = pd.read_csv(Path(config.dataset.result_dir) / "scores/score_lexical_dev_by_frequency.csv", index_col=0)
-    df_sblimp = pd.read_csv(Path(config.dataset.result_dir) / "scores/score_syntactic_dev_by_type.csv", index_col=0)
+        df_swuggy = pd.read_csv(Path(self.output_dir) / "scores/score_lexical_dev_by_frequency.csv", index_col=0)
+        df_sblimp = pd.read_csv(Path(self.output_dir) / "scores/score_syntactic_dev_by_type.csv", index_col=0)
 
-    swuggy_all = (df_swuggy["n"] * df_swuggy["score"]).sum() / df_swuggy["n"].sum()
-    swuggy_oov = df_swuggy.loc["oov", "score"]
+        swuggy_all = (df_swuggy["n"] * df_swuggy["score"]).sum() / df_swuggy["n"].sum()
+        swuggy_oov = df_swuggy.loc["oov", "score"]
 
-    df_swuggy_iv = df_swuggy[df_swuggy.index != "oov"]
-    swuggy_iv = (df_swuggy_iv["n"] * df_swuggy_iv["score"]).sum() / df_swuggy_iv["n"].sum()
+        df_swuggy_iv = df_swuggy[df_swuggy.index != "oov"]
+        swuggy_iv = (df_swuggy_iv["n"] * df_swuggy_iv["score"]).sum() / df_swuggy_iv["n"].sum()
 
-    sblimp = (df_sblimp["n"] * df_sblimp["score"]).sum() / df_sblimp["n"].sum()
+        sblimp = (df_sblimp["n"] * df_sblimp["score"]).sum() / df_sblimp["n"].sum()
 
-    writer.add_scalar("dev/sWUGGY all", swuggy_all, step)
-    writer.add_scalar("dev/sWUGGY in-vocab", swuggy_iv, step)
-    writer.add_scalar("dev/sWUGGY out-of-vocab", swuggy_oov, step)
-    writer.add_scalar("dev/sBLIMP", sblimp, step)
+        logs = {
+            "step": state.global_step,
+            "eval_sWUGGY": swuggy_all,
+            "eval_sWUGGY_in_vocab": swuggy_iv,
+            "eval_sWUGGY_out_of_vocab": swuggy_oov,
+            "eval_sBLIMP": sblimp,
+        }
 
-    torch.cuda.empty_cache()
+        if state.epoch is not None:
+            logs["epoch"] = state.epoch
+
+        state.log_history.append(logs)
+
+        model.train()
+
+    def on_train_end(self, args, state, control, model, **kwargs):
+        if not state.is_world_process_zero:
+            return
+
+        model.eval()
+
+        _eval(model, self.swuggy_test_loader, Path(self.output_dir) / "lexical/test.txt")
+        _eval(model, self.sblimp_test_loader, Path(self.output_dir) / "syntactic/test.txt")
+        _eval(model, self.tSC_test_loader, Path(self.output_dir) / "tSC/test.txt")
+
+        subprocess.run(
+            [
+                "zrc",
+                "benchmarks:run",
+                "sLM21",
+                self.output_dir,
+                "--skip-validation",
+                "--sets",
+                "test",
+                "--task",
+                "lexical",
+                "syntactic",
+            ]
+        )
+
+        df_swuggy = pd.read_csv(Path(self.output_dir) / "scores/score_lexical_test_by_frequency.csv", index_col=0)
+        df_sblimp = pd.read_csv(Path(self.output_dir) / "scores/score_syntactic_test_by_type.csv", index_col=0)
+
+        swuggy_all = (df_swuggy["n"] * df_swuggy["score"]).sum() / df_swuggy["n"].sum()
+        swuggy_oov = df_swuggy.loc["oov", "score"]
+
+        df_swuggy_iv = df_swuggy[df_swuggy.index != "oov"]
+        swuggy_iv = (df_swuggy_iv["n"] * df_swuggy_iv["score"]).sum() / df_swuggy_iv["n"].sum()
+
+        sblimp = (df_sblimp["n"] * df_sblimp["score"]).sum() / df_sblimp["n"].sum()
+
+        # tSC
+        data = defaultdict(dict)
+
+        with open(Path(self.output_dir) / "tSC/test.txt") as f:
+            for line in f:
+                name, score = line.strip().split()
+                n, id_, correct = name.split("_")
+                score = float(score)
+                data[id_][correct] = score
+
+        data = [{"id": id_, "correct": data[id_]["correct"], "incorrect": data[id_]["incorrect"]} for id_ in data]
+        df_tSC = pd.DataFrame(data)
+        tSC = (df_tSC["correct"] >= df_tSC["incorrect"]).mean()
+
+        pd.DataFrame(
+            [swuggy_all, swuggy_iv, swuggy_oov, sblimp, tSC],
+            index=["sWUGGY", "sWUGGY in-vocab", "sWUGGY out-of-vocab", "sBLIMP", "tSC"],
+        ).to_csv(Path(self.output_dir) / "scores/score.csv")
+
+
+class DefrostCallback(TrainerCallback):
+    def __init__(self, handle_input_embeddings, handle_output_embeddings):
+        self.handle_input_embeddings = handle_input_embeddings
+        self.handle_output_embeddings = handle_output_embeddings
+
+    def on_step_end(self, args, state, control, model, **kwargs):
+        if state.global_step == args.warmup_steps:
+            self.handle_input_embeddings.remove()
+            self.handle_output_embeddings.remove()
+            model.requires_grad_(True)
 
 
 def train(config):
-    fix_random_seed()
-
-    torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
-    dist.init_process_group("nccl")
-    rank = dist.get_rank()
-    print(f"Start running DDP on rank {rank}.", flush=True)
-    # create model and move it to GPU with id rank
-    device_id = rank % torch.cuda.device_count()
-
+    # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config.model.name)
     vocab = tokenizer.get_vocab()
     vocab_size = (
@@ -101,22 +171,40 @@ def train(config):
         assert unit not in vocab
     tokenizer.add_tokens(units)
 
-    trainset = load_dataset(config.dataset.name, "Libri-Light", split="train", keep_in_memory=True)
-    sampler = DistributedSampler(trainset) if dist.is_initialized() else None
-    train_loader = DataLoader(
-        trainset,
-        batch_size=config.dataloader.batch_size_per_device,
-        shuffle=(sampler is None),
-        sampler=sampler,
-        collate_fn=get_collate_fn(
-            tokenizer,
-        ),
+    # Datasets
+    train_dataset = load_dataset(config.dataset.name, "Libri-Light", split="train", keep_in_memory=True)
+    swuggy = load_dataset(config.dataset.name, "sWUGGY")
+    sblimp = load_dataset(config.dataset.name, "sBLIMP")
+    tSC = load_dataset(config.dataset.name, "tSC")
+
+    swuggy_dev_loader = torch.utils.data.DataLoader(
+        swuggy["dev"],
+        batch_size=config.training_args.per_device_eval_batch_size,
+        collate_fn=get_collate_fn(tokenizer),
+    )
+    sblimp_dev_loader = torch.utils.data.DataLoader(
+        sblimp["dev"],
+        batch_size=config.training_args.per_device_eval_batch_size,
+        collate_fn=get_collate_fn(tokenizer),
+    )
+    swuggy_test_loader = torch.utils.data.DataLoader(
+        swuggy["test"],
+        batch_size=config.training_args.per_device_eval_batch_size,
+        collate_fn=get_collate_fn(tokenizer),
+    )
+    sblimp_test_loader = torch.utils.data.DataLoader(
+        sblimp["test"],
+        batch_size=config.training_args.per_device_eval_batch_size,
+        collate_fn=get_collate_fn(tokenizer),
+    )
+    tSC_test_loader = torch.utils.data.DataLoader(
+        tSC["test"],
+        batch_size=config.training_args.per_device_eval_batch_size,
+        collate_fn=get_collate_fn(tokenizer),
     )
 
-    if rank == 0:
-        writer = SummaryWriter(config.model.path)
-
-    model = AutoModelForCausalLM.from_pretrained(config.model.name, torch_dtype="auto")
+    # Model
+    model = AutoModelForCausalLM.from_pretrained(config.model.name)
     model.resize_token_embeddings(len(tokenizer))
     model.requires_grad_(False)
     model.get_input_embeddings().requires_grad_(True)
@@ -127,119 +215,26 @@ def train(config):
     handle_output_embeddings = model.get_output_embeddings().register_hook(
         lambda grad: torch.cat([torch.zeros_like(grad[: len(vocab)]), grad[len(vocab) :]])
     )
-    model.to(device_id)
-    model = DDP(model, device_ids=[device_id])
 
-    optimizer = torch.optim.AdamW(model.parameters(), config.optim.lr, (config.optim.beta1, config.optim.beta2))
+    training_args = TrainingArguments(**OmegaConf.to_container(config.training_args))
 
-    # learning rate scheduler
-    lr_scheduler = get_lr_schedule(
-        optimizer,
-        config.optim.total_steps,
-        config.optim.warmup_steps,
-        config.optim.lr,
-        config.optim.lr_min,
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        processing_class=tokenizer,
+        data_collator=get_collate_fn(tokenizer),
+        callbacks=[
+            EvaluationCallback(
+                config.training_args.output_dir,
+                config.dataset.APP_DIR,
+                swuggy_dev_loader,
+                sblimp_dev_loader,
+                swuggy_test_loader,
+                sblimp_test_loader,
+                tSC_test_loader,
+            ),
+            DefrostCallback(handle_input_embeddings, handle_output_embeddings),
+        ],
     )
-
-    scaler = torch.GradScaler("cuda", init_scale=1e24)
-
-    last_epoch = 0
-    step = 0
-    global_step = 0
-
-    # resume training
-    checkpoint_path = Path(config.model.path) / "checkpoint"
-    if checkpoint_path.is_file():
-        ckpt = torch.load(checkpoint_path, weights_only=True)
-
-        last_epoch = ckpt["epoch"]
-        step = ckpt["step"]
-        global_step = ckpt["global_step"]
-        model.module.load_state_dict(ckpt["model"])
-        optimizer.load_state_dict(ckpt["optimizer"])
-        lr_scheduler.load_state_dict(ckpt["scheduler"])
-        scaler.load_state_dict(ckpt["scaler"])
-
-        print(f"load from {checkpoint_path}", flush=True)
-        del ckpt
-        torch.cuda.empty_cache()
-
-    for epoch in range(last_epoch, config.optim.epoch):
-        model.train()
-
-        if dist.is_initialized():
-            sampler.set_epoch(epoch)
-
-        train_loader_iter = iter(train_loader)
-
-        for _ in range(step):
-            next(train_loader_iter)
-
-        for step, batch in enumerate(train_loader_iter, start=step):
-            with torch.autocast("cuda", dtype=torch.bfloat16):
-                loss = model(
-                    input_ids=batch["input_ids"].to(device_id),
-                    attention_mask=batch["attention_mask"].to(device_id),
-                    labels=batch["labels"].to(device_id),
-                ).loss
-            scaler.scale(loss).backward()
-
-            # gradient clipping
-            scaler.unscale_(optimizer)
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.optim.max_norm)
-
-            # update model
-            scaler.step(optimizer)
-            scale = scaler.get_scale()
-            scaler.update()
-            optimizer.zero_grad()
-
-            # update learning rate
-            lr = lr_scheduler.get_last_lr()[0]
-            lr_scheduler.step()
-
-            step += 1
-            global_step += 1
-
-            # tensorboard log
-            if rank == 0 and global_step % config.optim.summary_interval == 0:
-                writer.add_scalar("train/loss", loss.item(), global_step)
-                writer.add_scalar("train/lr", lr, global_step)
-                writer.add_scalar("train/scale", scale, global_step)
-                writer.add_scalar("train/grad_norm", grad_norm.item(), global_step)
-
-                # trace the peak GPU memory
-                writer.add_scalar("memory/allocated (GB)", torch.cuda.max_memory_allocated() / 2**30, global_step)
-                writer.add_scalar("memory/reserved (GB)", torch.cuda.max_memory_reserved() / 2**30, global_step)
-
-            # save model
-            if rank == 0 and global_step % config.optim.validation_save_interval == 0:
-                ckpt = {
-                    "epoch": epoch,
-                    "step": step,
-                    "global_step": global_step,
-                    "model": model.module.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                    "scheduler": lr_scheduler.state_dict(),
-                    "scaler": scaler.state_dict(),
-                }
-                Path(config.model.path).parent.mkdir(parents=True, exist_ok=True)
-                model.module.save_pretrained(config.model.path)
-                tokenizer.save_pretrained(config.model.path)
-                torch.save(ckpt, checkpoint_path)
-                torch.save(ckpt, checkpoint_path.with_name(f"{checkpoint_path.name}{global_step:08}"))
-
-                validate(config, model, tokenizer, global_step, writer)
-
-            if global_step == config.optim.total_steps:
-                torch.distributed.destroy_process_group()
-                return
-
-            if global_step == config.optim.warmup_steps:
-                handle_input_embeddings.remove()
-                handle_output_embeddings.remove()
-                model.requires_grad_(True)
-
-        step = 0
-
-    torch.distributed.destroy_process_group()
+    trainer.train(resume_from_checkpoint=True)

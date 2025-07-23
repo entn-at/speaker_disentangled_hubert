@@ -18,11 +18,15 @@ module load miniconda
 eval "$(/apps/t4/rhel9/free/miniconda/24.1.2/bin/conda shell.bash hook)"
 conda activate py310
 
-torchrun \
-    --nnodes=1 \  # node_f=1
-    --nproc_per_node=4 \  # node_f=1
-    --rdzv_id=100 \
-    --rdzv_backend=c10d \
-    --rdzv_endpoint=localhost:29400 \
+accelerate launch \
     main_speechlm.py train \
     --config=${config}
+
+# torchrun \
+#     --nnodes=1 \  # node_f=1
+#     --nproc_per_node=4 \  # node_f=1
+#     --rdzv_id=100 \
+#     --rdzv_backend=c10d \
+#     --rdzv_endpoint=localhost:29400 \
+#     main_speechlm.py train \
+#     --config=${config}
