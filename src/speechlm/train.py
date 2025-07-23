@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pandas as pd
 import torch
+import torch.nn.functional as F
 from datasets import load_dataset
 from omegaconf import OmegaConf
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainerCallback, TrainingArguments
 
 from ..s5hubert import S5HubertForSyllableDiscovery
 from .data import get_collate_fn
-from .eval import _eval
 
 
 class EvaluationCallback(TrainerCallback):
@@ -33,6 +33,31 @@ class EvaluationCallback(TrainerCallback):
         self.sblimp_test_loader = sblimp_test_loader
         self.tSC_test_loader = tSC_test_loader
 
+    @torch.inference_mode()
+    def _eval(
+        self,
+        model,
+        loader: torch.utils.data.DataLoader,
+        out_file,
+    ):
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_file, "w") as f:
+            for batch in loader:
+                # Speech LM
+                input_ids = batch["input_ids"].to(model.device)
+                labels = batch["labels"].to(model.device)
+                logits = model(input_ids=input_ids, labels=labels).logits.transpose(1, 2)
+
+                labels = F.pad(labels, (0, 1), value=-100)
+                shifted_labels = labels[:, 1:]
+
+                scores = -F.cross_entropy(logits, shifted_labels, reduction="none")
+                scores = scores.sum(dim=1) / scores.ne(0).sum(dim=1)
+                scores = scores.tolist()
+
+                for id, score in zip(batch["id"], scores):
+                    f.write(f"{id} {score}\n")
+
     def on_step_end(self, args, state, control, model, **kwargs):
         if state.global_step % args.eval_steps != 0 or not state.is_world_process_zero:
             return
@@ -44,8 +69,8 @@ class EvaluationCallback(TrainerCallback):
         if not Path(self.output_dir).is_dir():
             subprocess.run(["zrc", "submission:init", "sLM21", self.output_dir], env=os.environ)
 
-        _eval(model, self.swuggy_dev_loader, Path(self.output_dir) / "lexical/dev.txt")
-        _eval(model, self.sblimp_dev_loader, Path(self.output_dir) / "syntactic/dev.txt")
+        self._eval(model, self.swuggy_dev_loader, Path(self.output_dir) / "lexical/dev.txt")
+        self._eval(model, self.sblimp_dev_loader, Path(self.output_dir) / "syntactic/dev.txt")
 
         subprocess.run(
             [
@@ -93,9 +118,9 @@ class EvaluationCallback(TrainerCallback):
 
         model.eval()
 
-        _eval(model, self.swuggy_test_loader, Path(self.output_dir) / "lexical/test.txt")
-        _eval(model, self.sblimp_test_loader, Path(self.output_dir) / "syntactic/test.txt")
-        _eval(model, self.tSC_test_loader, Path(self.output_dir) / "tSC/test.txt")
+        self._eval(model, self.swuggy_test_loader, Path(self.output_dir) / "lexical/test.txt")
+        self._eval(model, self.sblimp_test_loader, Path(self.output_dir) / "syntactic/test.txt")
+        self._eval(model, self.tSC_test_loader, Path(self.output_dir) / "tSC/test.txt")
 
         subprocess.run(
             [
