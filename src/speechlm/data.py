@@ -137,7 +137,7 @@ def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
 
             outputs = encoder(input_values.to(encoder.device))
 
-            text = example["supervisions"][0]["custom"]["texts"][0]
+            text = example["supervisions"][0]["custom"]["texts"][1]
             text = normalize_text(text)
 
             manifest = {

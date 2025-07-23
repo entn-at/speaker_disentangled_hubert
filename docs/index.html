@@ -55,26 +55,41 @@
 
 <div class="container float-div">
     <div class="text-center">
-        <h3>Speech resynthesis samples from LibriTTS-R test set</h3>
+        <h3>Speech resynthesis samples from LibriSpeech test-clean</h3>
     </div>
     <div class="table-responsive pt-3">
         <table style="text-align: center" class="table table-hover">
             <thead>
                 <tr>
-                    <th style="text-align: center; vertical-align: top" rowspan="2">Original</th>
-                    <th style="text-align: center" colspan="2">Resynthesis</th>
-                </tr>
-                <tr>
-                    <th style="text-align: center">sampling #1</th>
-                    <th style="text-align: center">sampling #2</th>
+                    <th style="text-align: center">Original</th>
+                    <th style="text-align: center">Resynthesis</th>
+                    <th style="text-align: center">Syllable segmentation</th>
                 </tr>
             </thead>
             <tbody>
 
                 <tr>
-                    <td><audio controls controlslist="nodownload" src='audio/'></audio></td>
-                    <td><audio controls controlslist="nodownload" src='audio/'></audio></td>
-                    <td><audio controls controlslist="nodownload" src='audio/'></audio></td>
+                    <td><audio controls controlslist="nodownload" src='audio/61-70968-0021.wav'></audio></td>
+                    <td><audio controls controlslist="nodownload" src='audio/61-70968-0021-resynthesis.wav'></audio></td>
+                    <td><img src="audio/61-70968-0021.png" style="width:100%"></td>
+                </tr>
+
+                <tr>
+                    <td><audio controls controlslist="nodownload" src='audio/1089-134686-0029.wav'></audio></td>
+                    <td><audio controls controlslist="nodownload" src='audio/1089-134686-0029-resynthesis.wav'></audio></td>
+                    <td><img src="audio/1089-134686-0029.png" style="width:100%"></td>
+                </tr>
+
+                <tr>
+                    <td><audio controls controlslist="nodownload" src='audio/1221-135766-0015.wav'></audio></td>
+                    <td><audio controls controlslist="nodownload" src='audio/1221-135766-0015-resynthesis.wav'></audio></td>
+                    <td><img src="audio/1221-135766-0015.png" style="width:100%"></td>
+                </tr>
+
+                <tr>
+                    <td><audio controls controlslist="nodownload" src='audio/1995-1837-0006.wav'></audio></td>
+                    <td><audio controls controlslist="nodownload" src='audio/1995-1837-0006-resynthesis.wav'></audio></td>
+                    <td><img src="audio/1995-1837-0006.png" style="width:100%"></td>
                 </tr>
 
             </tbody>
@@ -86,18 +101,16 @@
     <h3>License</h3>
     <p>
         The
-        <a href="https://www.openslr.org/141/" , target='_blank'>LibriTTS-R</a>
-        dataset is made available by Google LLC under the
-        <a href="http://creativecommons.org/licenses/by/4.0/" , target='_blank'>CC BY 4.0</a>.
+        <a href="https://www.openslr.org/12" , target='_blank'>LibriSpeech</a>
+        dataset is made available under the
+        <a href="http://creativecommons.org/licenses/by/4.0/" , target='_blank'>CC BY 4.0 license</a>.
     </p>
 </div>
 
 <div class="container">
     <h3>References</h3>
     <ol>
-        <li>Y. Koizumi, H. Zen, S. Karita, Y. Ding, K. Yatabe, N. Morioka, M. Bacchiani, Y. Zhang, W. Han, and A. Bapna, "LibriTTS-R: A restored multi-speaker text-to-speech corpus," in Proc. Interspeech, 2023, pp. 5496–5500.</li>
-        <li>M. Le, A. Vyas, B. Shi, B. Karrer, L. Sari, R. Moritz, M. Williamson, V. Manohar, Y. Adi, J. Mahadeokar, and W.-N. Hsu, "Voicebox: Text-guided multilingual universal speech generation at scale," in Proc. Thirty-seventh Conference on Neural Information Processing Systems, vol. 36, 2023, pp. 14005–14034.</li>
-        <li>S. gil Lee, W. Ping, B. Ginsburg, B. Catanzaro, and S. Yoon, "BigVGAN: A universal neural vocoder with large-scale training," in Proc. International Conference on Learning Representations, 2023.</li>
+        <li>Vassil Panayotov, Guoguo Chen, Daniel Povey and Sanjeev Khudanpur, "LibriSpeech: an ASR corpus based on public domain audio books," in Proc. ICASSP, 2015, pp. 5206–5210.</li>
     </ol>
 </div>
 

@@ -32,7 +32,7 @@ training_args:
   save_total_limit: 2
   bf16: true
   eval_steps: 5000
-  fsdp: "full_shard"
+  fsdp: "shard_grad_op"
 
 speech2unit:
   model_name_or_path: "ryota-komatsu/s5-hubert"

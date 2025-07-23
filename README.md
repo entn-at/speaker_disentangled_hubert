@@ -6,6 +6,7 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2409.10103-<COLOR>.svg?logo=arXiv)](https://arxiv.org/abs/2409.10103)
 [![model](https://img.shields.io/badge/%F0%9F%A4%97-Model-blue)](https://huggingface.co/ryota-komatsu/s5-hubert)
 [![dataset](https://img.shields.io/badge/%F0%9F%A4%97-Datasets-blue)](https://huggingface.co/datasets/ryota-komatsu/s5-hubert)
+[![demo](https://img.shields.io/badge/Demo-blue)](https://ryota-komatsu.github.io/speaker_disentangled_hubert)
 
 This is the official repository of the IEEE SLT 2024 paper [Self-Supervised Syllable Discovery Based on Speaker-Disentangled HuBERT](https://arxiv.org/abs/2409.10103).
 
@@ -54,7 +55,8 @@ audio_values = decoder(units)
 
 ## Demo
 
-Google Colab demo is found [here](https://colab.research.google.com/github/ryota-komatsu/speaker_disentangled_hubert/blob/main/demo.ipynb).
+- Speech resynthesis examples can be heard on the [project page](https://ryota-komatsu.github.io/speaker_disentangled_hubert).
+- Google Colab demo is found [here](https://colab.research.google.com/github/ryota-komatsu/speaker_disentangled_hubert/blob/main/demo.ipynb).
 
 ## Models
 
@@ -119,7 +121,6 @@ python main_unit2speech.py train_flow_matching --config=configs/unit2speech/defa
 GROUP_NAME=
 
 qsub -g ${GROUP_NAME} scripts/run_speechlm.bash configs/speechlm/default.yaml
-python main_speechlm.py evaluate --config=configs/speechlm/default.yaml
 ```
 
 ## Citation
