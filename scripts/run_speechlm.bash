@@ -8,6 +8,7 @@
 #$ -M EMAIL_ADDRESS
 
 config=${1:-configs/speechlm/default.yaml}
+config_file=${2:-configs/speechlm/default_config.yaml}
 
 module load cuda/12.1.0
 module load intel
@@ -18,7 +19,11 @@ module load miniconda
 eval "$(/apps/t4/rhel9/free/miniconda/24.1.2/bin/conda shell.bash hook)"
 conda activate py310
 
+main_process_ip=$(head -n 1 $PE_HOSTFILE | awk '{print $1}')
+
 accelerate launch \
+    --config_file=${config_file} \
+    --main_process_ip=${main_process_ip} \
     main_speechlm.py train \
     --config=${config}
 

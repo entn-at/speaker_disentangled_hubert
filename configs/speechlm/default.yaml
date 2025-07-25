@@ -13,6 +13,7 @@ dataset:
 
 model:
   name: ""
+  resume_from_checkpoint: null
 
 training_args:
   output_dir: "models/speechlm"
@@ -32,6 +33,7 @@ training_args:
   save_total_limit: 2
   bf16: true
   eval_steps: 5000
+  remove_unused_columns: false
   fsdp: "shard_grad_op"
 
 speech2unit:

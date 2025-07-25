@@ -234,10 +234,10 @@ def train(config):
     model.requires_grad_(False)
     model.get_input_embeddings().requires_grad_(True)
     model.get_output_embeddings().requires_grad_(True)
-    handle_input_embeddings = model.get_input_embeddings().register_hook(
+    handle_input_embeddings = model.get_input_embeddings().weight.register_hook(
         lambda grad: torch.cat([torch.zeros_like(grad[: len(vocab)]), grad[len(vocab) :]])
     )
-    handle_output_embeddings = model.get_output_embeddings().register_hook(
+    handle_output_embeddings = model.get_output_embeddings().weight.register_hook(
         lambda grad: torch.cat([torch.zeros_like(grad[: len(vocab)]), grad[len(vocab) :]])
     )
 
@@ -262,4 +262,4 @@ def train(config):
             DefrostCallback(handle_input_embeddings, handle_output_embeddings),
         ],
     )
-    trainer.train(resume_from_checkpoint=True)
+    trainer.train(resume_from_checkpoint=config.model.resume_from_checkpoint)
