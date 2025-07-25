@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
+import numpy as np
 import torch
 import torchaudio
 from datasets import Audio, DatasetDict, Features, Sequence, Value, load_dataset
@@ -137,7 +138,7 @@ def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
 
             outputs = encoder(input_values.to(encoder.device))
 
-            text = example["supervisions"][0]["custom"]["texts"][1]
+            text = example["supervisions"][0]["custom"]["texts"][0]
             text = normalize_text(text)
 
             manifest = {
@@ -148,3 +149,83 @@ def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
                 "durations": outputs[0]["durations"].tolist(),
             }
             f.write(json.dumps(manifest) + "\n")
+
+
+def align_train(config, num_shards: int = 1):
+    data_files = [f"{config.dataset.manifest_prefix}{shard_index}.json" for shard_index in range(num_shards)]
+    dataset = load_dataset("json", data_files=data_files, split="train")
+
+    id_to_aligned_text = dict()
+
+    for shard_index in range(num_shards):
+        manifest_prefix = Path(config.dataset.manifest_prefix).stem
+        manifest_with_output_file_paths = os.path.join(
+            config.dataset.lh_dir, f"shard{shard_index}/{manifest_prefix}{shard_index}_with_output_file_paths.json"
+        )
+
+        with open(manifest_with_output_file_paths) as f:
+            for example in f:
+                example = json.loads(example.strip())
+
+                id_ = str(Path(example["audio_filepath"]).relative_to(config.dataset.lh_dir).with_suffix(""))
+                aligned_text = []
+
+                if "words_level_ctm_filepath" in example:
+                    with open(example["words_level_ctm_filepath"]) as g:
+                        for line in g:
+                            _, _, start, duration, word, _, _, _ = line.split(" ")
+
+                            aligned_text.append(
+                                {
+                                    "start_time": float(start),
+                                    "end_time": float(start) + float(duration),
+                                    "word": " " + word,
+                                }
+                            )
+
+                id_to_aligned_text[id_] = aligned_text
+
+    def add_aligned_units(example):
+        example["aligned_text"] = id_to_aligned_text[example["id"]]
+
+        if not example["aligned_text"]:
+            end_time = sum(example["durations"]) * 0.02
+            example["aligned_units"] = [
+                {"start_time": 0.0, "end_time": end_time, "units": example["units"], "text": example["text"]}
+            ]
+            return example
+
+        unit_timestamps = np.cumsum(example["durations"]) * 0.02
+        word_timestamps = sorted(
+            {item["start_time"] for item in example["aligned_text"]}
+            | {item["end_time"] for item in example["aligned_text"]}
+        )
+        aligned_timestamps = sorted(
+            set(unit_timestamps) & set(word_timestamps) | set([max(unit_timestamps[-1], word_timestamps[-1])])
+        )
+
+        aligned_units = []
+        start_time = 0
+
+        for end_time in aligned_timestamps:
+            units = [
+                unit
+                for unit, unit_end_time in zip(example["units"], unit_timestamps)
+                if start_time < unit_end_time <= end_time
+            ]
+            text = "".join(
+                item["word"]
+                for item in example["aligned_text"]
+                if start_time <= item["start_time"] and item["end_time"] <= end_time
+            )
+
+            aligned_units.append({"start_time": start_time, "end_time": end_time, "units": units, "text": text})
+            start_time = end_time
+
+        example["aligned_units"] = aligned_units
+
+        return example
+
+    dataset = dataset.map(add_aligned_units, remove_columns="audio_filepath")
+    dataset = DatasetDict({"train": dataset})
+    dataset.push_to_hub(config.dataset.name, "Libri-Light")

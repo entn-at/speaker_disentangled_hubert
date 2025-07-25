@@ -14,6 +14,14 @@ class TaskRunner:
 
         tokenize_train(config, num_shards, shard_index)
 
+    def align_train(self, config: str = "configs/speechlm/default.yaml", num_shards: int = 1):
+        config = OmegaConf.load(config)
+        os.environ["HF_HOME"] = str(Path(config.dataset.HF_HOME).expanduser())
+
+        from src.speechlm.data import align_train
+
+        align_train(config, num_shards)
+
     def tokenize_eval(self, config: str = "configs/speechlm/default.yaml"):
         from src.speechlm.data import tokenize_eval
 
