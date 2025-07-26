@@ -16,17 +16,12 @@ from ..s5hubert import S5HubertForSyllableDiscovery
 from .utils import normalize_text
 
 
-def get_collate_fn(
+def get_collator(
     tokenizer,
 ):
-    def collate_fn(batch) -> Dict[str, Any]:
-        input_ids = []
-        id = []
-
-        for item in batch:
-            units = item["units"]
-            input_ids.append("".join(f"<{unit}>" for unit in units))
-            id.append(item["id"])
+    def collator(batch) -> Dict[str, Any]:
+        input_ids = ["".join(f"<{unit}>" for unit in item["units"]) for item in batch]
+        id = [item["id"] for item in batch]
 
         inputs = tokenizer(input_ids, padding=True, return_tensors="pt")
 
@@ -41,7 +36,7 @@ def get_collate_fn(
             "id": id,
         }
 
-    return collate_fn
+    return collator
 
 
 def get_tokenize_fn(encoder, data_dir):

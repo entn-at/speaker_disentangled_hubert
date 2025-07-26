@@ -3,6 +3,7 @@ import subprocess
 from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
@@ -11,7 +12,7 @@ from omegaconf import OmegaConf
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainerCallback, TrainingArguments
 
 from ..s5hubert import S5HubertForSyllableDiscovery
-from .data import get_collate_fn
+from .data import get_collator
 
 
 class EvaluationCallback(TrainerCallback):
@@ -97,18 +98,10 @@ class EvaluationCallback(TrainerCallback):
 
         sblimp = (df_sblimp["n"] * df_sblimp["score"]).sum() / df_sblimp["n"].sum()
 
-        logs = {
-            "step": state.global_step,
-            "eval_sWUGGY": swuggy_all,
-            "eval_sWUGGY_in_vocab": swuggy_iv,
-            "eval_sWUGGY_out_of_vocab": swuggy_oov,
-            "eval_sBLIMP": sblimp,
-        }
-
-        if state.epoch is not None:
-            logs["epoch"] = state.epoch
-
-        state.log_history.append(logs)
+        pd.DataFrame(
+            np.array([swuggy_all, swuggy_iv, swuggy_oov, sblimp]) * 100,
+            index=["sWUGGY", "sWUGGY iv", "sWUGGY oov", "sBLIMP"],
+        ).to_csv(Path(self.output_dir) / f"scores/score_dev_{state.global_step}.csv")
 
         model.train()
 
@@ -163,9 +156,9 @@ class EvaluationCallback(TrainerCallback):
         tSC = (df_tSC["correct"] >= df_tSC["incorrect"]).mean()
 
         pd.DataFrame(
-            [swuggy_all, swuggy_iv, swuggy_oov, sblimp, tSC],
-            index=["sWUGGY", "sWUGGY in-vocab", "sWUGGY out-of-vocab", "sBLIMP", "tSC"],
-        ).to_csv(Path(self.output_dir) / "scores/score.csv")
+            np.array([swuggy_all, swuggy_iv, swuggy_oov, sblimp, tSC]) * 100,
+            index=["sWUGGY", "sWUGGY iv", "sWUGGY oov", "sBLIMP", "tSC"],
+        ).to_csv(Path(self.output_dir) / "scores/score_test.csv")
 
 
 class DefrostCallback(TrainerCallback):
@@ -205,27 +198,27 @@ def train(config):
     swuggy_dev_loader = torch.utils.data.DataLoader(
         swuggy["dev"],
         batch_size=config.training_args.per_device_eval_batch_size,
-        collate_fn=get_collate_fn(tokenizer),
+        collate_fn=get_collator(tokenizer),
     )
     sblimp_dev_loader = torch.utils.data.DataLoader(
         sblimp["dev"],
         batch_size=config.training_args.per_device_eval_batch_size,
-        collate_fn=get_collate_fn(tokenizer),
+        collate_fn=get_collator(tokenizer),
     )
     swuggy_test_loader = torch.utils.data.DataLoader(
         swuggy["test"],
         batch_size=config.training_args.per_device_eval_batch_size,
-        collate_fn=get_collate_fn(tokenizer),
+        collate_fn=get_collator(tokenizer),
     )
     sblimp_test_loader = torch.utils.data.DataLoader(
         sblimp["test"],
         batch_size=config.training_args.per_device_eval_batch_size,
-        collate_fn=get_collate_fn(tokenizer),
+        collate_fn=get_collator(tokenizer),
     )
     tSC_test_loader = torch.utils.data.DataLoader(
         tSC["test"],
         batch_size=config.training_args.per_device_eval_batch_size,
-        collate_fn=get_collate_fn(tokenizer),
+        collate_fn=get_collator(tokenizer),
     )
 
     # Model
@@ -248,7 +241,7 @@ def train(config):
         args=training_args,
         train_dataset=train_dataset,
         processing_class=tokenizer,
-        data_collator=get_collate_fn(tokenizer),
+        data_collator=get_collator(tokenizer),
         callbacks=[
             EvaluationCallback(
                 config.training_args.output_dir,
@@ -262,4 +255,4 @@ def train(config):
             DefrostCallback(handle_input_embeddings, handle_output_embeddings),
         ],
     )
-    trainer.train(resume_from_checkpoint=config.model.resume_from_checkpoint)
+    trainer.train(resume_from_checkpoint=config.training_args.resume_from_checkpoint)
