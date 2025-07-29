@@ -11,7 +11,6 @@ from datasets import load_dataset
 from omegaconf import OmegaConf
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainerCallback, TrainingArguments
 
-from ..s5hubert import S5HubertForSyllableDiscovery
 from .data import get_collator
 
 
@@ -177,13 +176,7 @@ def train(config):
     # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config.model.name)
     vocab = tokenizer.get_vocab()
-    vocab_size = (
-        S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path)
-        .quantizer2.max()
-        .int()
-        .item()
-        + 1
-    )
+    vocab_size = config.speech2unit.vocab_size
     units = [f"<{unit}>" for unit in range(vocab_size)]
     for unit in units:
         assert unit not in vocab

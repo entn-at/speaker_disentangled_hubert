@@ -12,7 +12,6 @@ from datasets import Audio, DatasetDict, Features, Sequence, Value, load_dataset
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
 
-from ..s5hubert import S5HubertForSyllableDiscovery
 from .utils import normalize_text
 
 
@@ -64,6 +63,8 @@ def get_tokenize_fn(encoder, data_dir):
 
 
 def tokenize_eval(config):
+    from ..s5hubert import S5HubertForSyllableDiscovery
+
     app_dir = Path(config.dataset.APP_DIR).expanduser()
     tSC_dir = Path(config.dataset.tSC_DIR)
 
@@ -113,6 +114,8 @@ def tokenize_eval(config):
 
 
 def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
+    from ..s5hubert import S5HubertForSyllableDiscovery
+
     dataset = load_dataset(config.dataset.train, split="train")
     dataset = dataset.shard(num_shards=num_shards, index=shard_index)
 

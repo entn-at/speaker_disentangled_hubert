@@ -10,17 +10,20 @@
 config=${1:-configs/speechlm/default.yaml}
 config_file=${2:-configs/speechlm/default_config.yaml}
 
-module load cuda/12.1.0
-module load openmpi/5.0.7-intel
+module load openmpi/5.0.7-nvhpc
 module load cudnn/9.0.0
 module load nccl/2.20.5
 module load miniconda
 
 main_process_ip=$(head -n 1 $PE_HOSTFILE | awk '{print $1}')
 
-mpirun -npernode 1 -n 2 bash -c '
+mpirun \
+    -npernode 1 \
+    -n 2 \
+    -x LD_LIBRARY_PATH \
+    bash -c '
     eval "$(/apps/t4/rhel9/free/miniconda/24.1.2/bin/conda shell.bash hook)"
-    conda activate py310
+    conda activate t4
     accelerate launch \
         --config_file='"${config_file}"' \
         --main_process_ip='"${main_process_ip}"' \
