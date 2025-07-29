@@ -13,11 +13,13 @@ dataset:
 
 model:
   name: ""
+  mean_resizing: false
 
 training_args:
   output_dir: "models/speechlm"
   per_device_train_batch_size: 8
   per_device_eval_batch_size: 8
+  gradient_accumulation_steps: 8
   learning_rate: 0.0005
   weight_decay: 0.01
   adam_beta1: 0.9
@@ -33,7 +35,7 @@ training_args:
   bf16: true
   eval_steps: 5000
   remove_unused_columns: false
-  skip_memory_metrics: true
+  ddp_find_unused_parameters: false
   resume_from_checkpoint: null
 
 speech2unit:

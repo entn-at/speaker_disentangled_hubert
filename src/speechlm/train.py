@@ -216,7 +216,7 @@ def train(config):
 
     # Model
     model = AutoModelForCausalLM.from_pretrained(config.model.name)
-    model.resize_token_embeddings(len(tokenizer))
+    model.resize_token_embeddings(len(tokenizer), mean_resizing=config.model.mean_resizing)
     model.requires_grad_(False)
     model.get_input_embeddings().requires_grad_(True)
     model.get_output_embeddings().requires_grad_(True)

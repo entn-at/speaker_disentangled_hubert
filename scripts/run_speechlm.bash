@@ -3,6 +3,7 @@
 #$ -cwd                      ## Execute a job in the current directory
 #$ -l node_f=2               ## Use number of node
 #$ -l h_rt=24:00:00          ## Running job time
+#$ -j y                      ## Integrate standard error output into a standard output
 #$ -p -5
 #$ -m abe
 #$ -M EMAIL_ADDRESS
@@ -31,12 +32,3 @@ mpirun \
         main_speechlm.py train \
         --config='"${config}"'
 '
-
-# torchrun \
-#     --nnodes=1 \  # node_f=1
-#     --nproc_per_node=4 \  # node_f=1
-#     --rdzv_id=100 \
-#     --rdzv_backend=c10d \
-#     --rdzv_endpoint=localhost:29400 \
-#     main_speechlm.py train \
-#     --config=${config}
