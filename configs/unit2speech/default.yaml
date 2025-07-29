@@ -1,6 +1,3 @@
-common:
-  seed: 0
-
 path:
   result: "results/unit2speech/default.csv"
 
@@ -15,33 +12,40 @@ dataset:
   eval_dir: "data/LibriSpeech/test-clean"
 
 flow_matching:
-  model_name_or_path: "models/flow_matching"
-  batch_size: 200 # work with a single 48GB VRAM GPU
-  num_workers: 2
-  epoch: 200
-  warmup_steps: 1000
-  lr: 0.001
-  lr_min: 0.0001
-  max_norm: 0.1
-  summary_interval: 100
-  save_interval_epoch: 50
+  training_args:
+    output_dir: "models/flow_matching"
+    per_device_train_batch_size: 200
+    learning_rate: 0.001
+    weight_decay: 0.01
+    max_grad_norm: 0.1
+    num_train_epochs: 200
+    lr_scheduler_type: "cosine_with_min_lr"
+    lr_scheduler_kwargs: {"min_lr": 0.0001}
+    warmup_steps: 1000
+    save_steps: 100000
+    save_total_limit: 2
+    fp16: true
+    eval_steps: 100000
+    remove_unused_columns: false
+    ddp_find_unused_parameters: false
+    resume_from_checkpoint: null
 
-  # src.flow_matching.configs.FlowMatchingConfig
-  vocab_size: 16384
-  dim_in: 80
-  dim_cond_emb: 768
-  hidden_size: 256
-  depth: 4
-  heads: 2
-  intermediate_size: 768
-  attn_dropout: 0.0
-  ff_dropout: 0.0
-  cfg_dropout: 0.2
-  use_unet_skip_connection: false
-  mean: -5.8843  # mean of log mel-spectrogram
-  std: 2.2615  # std of log mel-spectrogram
-  dt: 0.1
-  cfg_strength: 0.7  # classifier-free guidance (https://arxiv.org/abs/2207.12598)
+  model_args:
+    vocab_size: 16384
+    dim_in: 80
+    dim_cond_emb: 768
+    hidden_size: 256
+    depth: 4
+    heads: 2
+    intermediate_size: 768
+    attn_dropout: 0.0
+    ff_dropout: 0.0
+    cfg_dropout: 0.2
+    use_unet_skip_connection: false
+    mean: -5.8843  # mean of log mel-spectrogram
+    std: 2.2615  # std of log mel-spectrogram
+    dt: 0.1
+    cfg_strength: 0.7  # classifier-free guidance (https://arxiv.org/abs/2207.12598)
 
 vocoder:
   model_name_or_path: "ryota-komatsu/bigvgan"

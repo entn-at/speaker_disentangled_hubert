@@ -17,8 +17,6 @@ def get_collate_fn(pad_token_id: int = 16384):
         input_ids = [item["units"] for item in batch]
         spectrogram_labels = [item["spectrogram"] for item in batch]
         duration_labels = [item["durations"] for item in batch]
-        transcripts = [item["transcript"] for item in batch]
-        names = [item["id"] for item in batch]
 
         input_ids = pad_sequence(input_ids, batch_first=True, padding_value=pad_token_id)
         spectrogram_labels = pad_sequence(spectrogram_labels, batch_first=True, padding_value=-100)
@@ -28,8 +26,6 @@ def get_collate_fn(pad_token_id: int = 16384):
             "input_ids": input_ids,
             "spectrogram_labels": spectrogram_labels,
             "duration_labels": duration_labels,
-            "transcripts": transcripts,
-            "names": names,
         }
 
     return collate_fn

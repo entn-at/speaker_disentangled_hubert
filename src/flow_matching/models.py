@@ -29,6 +29,7 @@ import torch.nn.functional as F
 from torch import nn
 from transformers import PreTrainedModel
 from transformers.models.fastspeech2_conformer.modeling_fastspeech2_conformer import length_regulator
+from transformers.utils import ModelOutput
 
 from ..bigvgan.bigvgan import BigVGan, BigVGanConfig
 from ..bigvgan.data import dynamic_range_compression_torch
@@ -118,7 +119,9 @@ class FlowMatchingModel(PreTrainedModel):
         hidden_states = self.transformer(hidden_states, mask=mask, adaptive_rmsnorm_cond=time_emb)
         vt = self.to_pred(hidden_states)
 
-        return F.mse_loss(vt[mask], ut[mask]) + duration_loss
+        loss = F.mse_loss(vt[mask], ut[mask]) + duration_loss
+
+        return ModelOutput(loss=loss)
 
     @torch.inference_mode()
     def synthesize(self, input_ids: torch.LongTensor) -> torch.FloatTensor:

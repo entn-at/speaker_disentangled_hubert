@@ -1,173 +1,122 @@
-import os
 from pathlib import Path
 
 import jiwer
+import pandas as pd
 import torch
 from datasets import concatenate_datasets, load_dataset
-from torch.utils.tensorboard import SummaryWriter
-from transformers import AutoConfig, AutoModel, AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+from omegaconf import OmegaConf
+from transformers import (
+    AutoConfig,
+    AutoModel,
+    AutoModelForSpeechSeq2Seq,
+    AutoProcessor,
+    Trainer,
+    TrainerCallback,
+    TrainingArguments,
+    pipeline,
+)
 
 from ..bigvgan.bigvgan import BigVGan, BigVGanConfig
 from .configs import FlowMatchingConfig
 from .data import get_collate_fn
 from .models import FlowMatchingModel
-from .utils import fix_random_seed, get_input_embeddings, get_lr_schedule
+from .utils import get_input_embeddings
 
 # register BigVGan
 AutoConfig.register("bigvgan", BigVGanConfig)
 AutoModel.register(BigVGanConfig, BigVGan)
 
 
-@torch.inference_mode()
-def validate(config, dataloader, model: FlowMatchingModel, step: int, writer: SummaryWriter):
-    model.eval()
+class EvaluationCallback(TrainerCallback):
+    def __init__(
+        self,
+        vocoder_model_name_or_path,
+        asr_model_name_or_path,
+        eval_dataset,
+        data_collator,
+    ):
+        torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+        self.vocoder = AutoModel.from_pretrained(vocoder_model_name_or_path, device_map="cuda")
+        asr = AutoModelForSpeechSeq2Seq.from_pretrained(
+            asr_model_name_or_path,
+            torch_dtype=torch_dtype,
+            low_cpu_mem_usage=True,
+            use_safetensors=True,
+            device_map="cuda",
+        )
+        self.processor = AutoProcessor.from_pretrained(asr_model_name_or_path)
+        self.pipe = pipeline(
+            "automatic-speech-recognition",
+            model=asr,
+            tokenizer=self.processor.tokenizer,
+            feature_extractor=self.processor.feature_extractor,
+            torch_dtype=torch_dtype,
+        )
 
-    vocoder = AutoModel.from_pretrained(config.vocoder.model_name_or_path, device_map="cuda")
-    asr = AutoModelForSpeechSeq2Seq.from_pretrained(
-        config.asr.model_name_or_path,
-        torch_dtype=torch_dtype,
-        low_cpu_mem_usage=True,
-        use_safetensors=True,
-        device_map="cuda",
-    )
-    processor = AutoProcessor.from_pretrained(config.asr.model_name_or_path)
-    pipe = pipeline(
-        "automatic-speech-recognition",
-        model=asr,
-        tokenizer=processor.tokenizer,
-        feature_extractor=processor.feature_extractor,
-        torch_dtype=torch_dtype,
-    )
+        self.dataloader = torch.utils.data.DataLoader(eval_dataset, collate_fn=data_collator)
 
-    hyps = []
+    @torch.inference_mode()
+    def on_step_end(self, args, state, control, model: FlowMatchingModel, **kwargs):
+        if state.global_step % args.eval_steps != 0 or not state.is_world_process_zero:
+            return
 
-    for n, batch in enumerate(dataloader):
-        spectrogram = model.synthesize(batch["input_ids"].to(model.device))
-        hyp_wav = vocoder(spectrogram)
-        hyp_wav = hyp_wav.cpu().squeeze(0).numpy()
-        hyp = pipe(hyp_wav, generate_kwargs={"language": "english"}, return_timestamps=True)["text"]
-        hyps.append(hyp)
+        model.eval()
+        hyps = []
 
-        if n < 5:
-            writer.add_audio(f"hyp/{batch['names'][0]}", hyp_wav, step, 16000)
+        for batch in self.dataloader:
+            spectrogram = model.synthesize(batch["input_ids"].to(model.device))
+            hyp_wav = self.vocoder(spectrogram)
+            hyp_wav = hyp_wav.cpu().squeeze(0).numpy()
+            hyp = self.pipe(hyp_wav, generate_kwargs={"language": "english"}, return_timestamps=True)["text"]
+            hyps.append(hyp)
 
-    transcripts = [processor.tokenizer.normalize(transcript) for transcript in dataloader.dataset["transcript"]]
-    hyps = [processor.tokenizer.normalize(hyp) for hyp in hyps]
+        transcripts = [
+            self.processor.tokenizer.normalize(transcript) for transcript in self.dataloader.dataset["transcript"]
+        ]
+        hyps = [self.processor.tokenizer.normalize(hyp) for hyp in hyps]
 
-    wer_hyp = jiwer.wer(transcripts, hyps) * 100
-    cer_hyp = jiwer.cer(transcripts, hyps) * 100
+        cer = jiwer.cer(transcripts, hyps) * 100
+        wer = jiwer.wer(transcripts, hyps) * 100
 
-    writer.add_scalar("dev/WER", wer_hyp, step)
-    writer.add_scalar("dev/CER", cer_hyp, step)
+        pd.DataFrame([cer, wer], index=["CER", "WER"]).to_csv(
+            Path(args.output_dir) / f"score_dev_{state.global_step}.csv"
+        )
 
-    del vocoder
-    del pipe
-    del asr
-    torch.cuda.empty_cache()
+        model.train()
 
 
 def train_flow_matching(config):
-    fix_random_seed(config.common.seed)
-
-    train_set = concatenate_datasets(
+    train_dataset = concatenate_datasets(
         [
             load_dataset(config.dataset.name, "LibriTTS-R", split="train", keep_in_memory=True),
             load_dataset(config.dataset.name, "Hi-Fi-CAPTAIN", split="train", keep_in_memory=True),
             load_dataset(config.dataset.name, "DailyTalk", split="train", keep_in_memory=True),
         ]
     ).with_format("torch")
-    dev_set = load_dataset(config.dataset.name, "LibriTTS-R", split="dev", keep_in_memory=True).with_format("torch")
-
-    train_loader = torch.utils.data.DataLoader(
-        train_set,
-        batch_size=config.flow_matching.batch_size,
-        shuffle=True,
-        num_workers=config.flow_matching.num_workers,
-        collate_fn=get_collate_fn(config.flow_matching.vocab_size),
-    )
-    dev_loader = torch.utils.data.DataLoader(
-        dev_set,
-        num_workers=config.flow_matching.num_workers,
-        collate_fn=get_collate_fn(config.flow_matching.vocab_size),
+    eval_dataset = load_dataset(config.dataset.name, "LibriTTS-R", split="dev", keep_in_memory=True).with_format(
+        "torch"
     )
 
     model = FlowMatchingModel(
-        FlowMatchingConfig(
-            vocab_size=config.flow_matching.vocab_size,
-            dim_in=config.flow_matching.dim_in,
-            dim_cond_emb=config.flow_matching.dim_cond_emb,
-            hidden_size=config.flow_matching.hidden_size,
-            depth=config.flow_matching.depth,
-            heads=config.flow_matching.heads,
-            intermediate_size=config.flow_matching.intermediate_size,
-            attn_dropout=config.flow_matching.attn_dropout,
-            ff_dropout=config.flow_matching.ff_dropout,
-            cfg_dropout=config.flow_matching.cfg_dropout,
-            use_unet_skip_connection=config.flow_matching.use_unet_skip_connection,
-            mean=config.flow_matching.mean,
-            std=config.flow_matching.std,
-            dt=config.flow_matching.dt,
-            cfg_strength=config.flow_matching.cfg_strength,
-        ),
+        FlowMatchingConfig(**OmegaConf.to_container(config.flow_matching.model_args)),
         get_input_embeddings(config.speech2unit.model_name_or_path),
-    ).cuda()
-
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.flow_matching.lr)
-
-    # learning rate scheduler
-    lr_scheduler = get_lr_schedule(
-        optimizer,
-        config.flow_matching.epoch * len(train_loader),
-        config.flow_matching.warmup_steps,
-        config.flow_matching.lr,
-        config.flow_matching.lr_min,
     )
 
-    scaler = torch.GradScaler(model.device.type)
-    writer = SummaryWriter(os.path.join(config.flow_matching.model_name_or_path, "logs"))
+    training_args = TrainingArguments(**OmegaConf.to_container(config.flow_matching.training_args))
 
-    last_epoch = 0
-    step = 0
-
-    for epoch in range(last_epoch + 1, config.flow_matching.epoch + 1):
-        model.train()
-
-        for batch in train_loader:
-            with torch.autocast(model.device.type):
-                loss = model(
-                    input_ids=batch["input_ids"].to(model.device),
-                    spectrogram_labels=batch["spectrogram_labels"].to(model.device),
-                    duration_labels=batch["duration_labels"].to(model.device),
-                )
-            scaler.scale(loss).backward()
-
-            # gradient clipping
-            scaler.unscale_(optimizer)
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.flow_matching.max_norm)
-
-            scaler.step(optimizer)
-            scale = scaler.get_scale()
-            scaler.update()
-            optimizer.zero_grad()
-
-            # update learning rate
-            lr = lr_scheduler.get_last_lr()[0]
-            lr_scheduler.step()
-
-            step += 1
-
-            # tensorboard log
-            if step % config.flow_matching.summary_interval == 0:
-                writer.add_scalar("train/loss", loss.item(), step)
-                writer.add_scalar("train/lr", lr, step)
-                writer.add_scalar("train/scale", scale, step)
-                writer.add_scalar("train/grad_norm", grad_norm.item(), step)
-
-        if epoch % config.flow_matching.save_interval_epoch == 0:
-            validate(config, dev_loader, model, step, writer)
-
-            # save model
-            Path(config.flow_matching.model_name_or_path).parent.mkdir(parents=True, exist_ok=True)
-            model.save_pretrained(config.flow_matching.model_name_or_path)
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        data_collator=get_collate_fn(config.flow_matching.model_args.vocab_size),
+        callbacks=[
+            EvaluationCallback(
+                vocoder_model_name_or_path=config.vocoder.model_name_or_path,
+                asr_model_name_or_path=config.asr.model_name_or_path,
+                eval_dataset=eval_dataset,
+                data_collator=get_collate_fn(config.flow_matching.model_args.vocab_size),
+            )
+        ],
+    )
+    trainer.train(resume_from_checkpoint=config.flow_matching.training_args.resume_from_checkpoint)

@@ -17,7 +17,6 @@ from .data import get_collator
 class EvaluationCallback(TrainerCallback):
     def __init__(
         self,
-        output_dir,
         APP_DIR,
         swuggy_dev_loader: torch.utils.data.DataLoader,
         sblimp_dev_loader: torch.utils.data.DataLoader,
@@ -25,7 +24,6 @@ class EvaluationCallback(TrainerCallback):
         sblimp_test_loader: torch.utils.data.DataLoader,
         tSC_test_loader: torch.utils.data.DataLoader,
     ):
-        self.output_dir = output_dir
         self.APP_DIR = APP_DIR
         self.swuggy_dev_loader = swuggy_dev_loader
         self.sblimp_dev_loader = sblimp_dev_loader
@@ -66,18 +64,18 @@ class EvaluationCallback(TrainerCallback):
 
         os.environ["APP_DIR"] = str(Path(self.APP_DIR).expanduser())
 
-        if not Path(self.output_dir).is_dir():
-            subprocess.run(["zrc", "submission:init", "sLM21", self.output_dir], env=os.environ)
+        if not Path(args.output_dir).is_dir():
+            subprocess.run(["zrc", "submission:init", "sLM21", args.output_dir], env=os.environ)
 
-        self._eval(model, self.swuggy_dev_loader, Path(self.output_dir) / "lexical/dev.txt")
-        self._eval(model, self.sblimp_dev_loader, Path(self.output_dir) / "syntactic/dev.txt")
+        self._eval(model, self.swuggy_dev_loader, Path(args.output_dir) / "lexical/dev.txt")
+        self._eval(model, self.sblimp_dev_loader, Path(args.output_dir) / "syntactic/dev.txt")
 
         subprocess.run(
             [
                 "zrc",
                 "benchmarks:run",
                 "sLM21",
-                self.output_dir,
+                args.output_dir,
                 "--sets",
                 "dev",
                 "--task",
@@ -86,8 +84,8 @@ class EvaluationCallback(TrainerCallback):
             ]
         )
 
-        df_swuggy = pd.read_csv(Path(self.output_dir) / "scores/score_lexical_dev_by_frequency.csv", index_col=0)
-        df_sblimp = pd.read_csv(Path(self.output_dir) / "scores/score_syntactic_dev_by_type.csv", index_col=0)
+        df_swuggy = pd.read_csv(Path(args.output_dir) / "scores/score_lexical_dev_by_frequency.csv", index_col=0)
+        df_sblimp = pd.read_csv(Path(args.output_dir) / "scores/score_syntactic_dev_by_type.csv", index_col=0)
 
         swuggy_all = (df_swuggy["n"] * df_swuggy["score"]).sum() / df_swuggy["n"].sum()
         swuggy_oov = df_swuggy.loc["oov", "score"]
@@ -100,7 +98,7 @@ class EvaluationCallback(TrainerCallback):
         pd.DataFrame(
             np.array([swuggy_all, swuggy_iv, swuggy_oov, sblimp]) * 100,
             index=["sWUGGY", "sWUGGY iv", "sWUGGY oov", "sBLIMP"],
-        ).to_csv(Path(self.output_dir) / f"scores/score_dev_{state.global_step}.csv")
+        ).to_csv(Path(args.output_dir) / f"scores/score_dev_{state.global_step}.csv")
 
         model.train()
 
@@ -110,16 +108,16 @@ class EvaluationCallback(TrainerCallback):
 
         model.eval()
 
-        self._eval(model, self.swuggy_test_loader, Path(self.output_dir) / "lexical/test.txt")
-        self._eval(model, self.sblimp_test_loader, Path(self.output_dir) / "syntactic/test.txt")
-        self._eval(model, self.tSC_test_loader, Path(self.output_dir) / "tSC/test.txt")
+        self._eval(model, self.swuggy_test_loader, Path(args.output_dir) / "lexical/test.txt")
+        self._eval(model, self.sblimp_test_loader, Path(args.output_dir) / "syntactic/test.txt")
+        self._eval(model, self.tSC_test_loader, Path(args.output_dir) / "tSC/test.txt")
 
         subprocess.run(
             [
                 "zrc",
                 "benchmarks:run",
                 "sLM21",
-                self.output_dir,
+                args.output_dir,
                 "--skip-validation",
                 "--sets",
                 "test",
@@ -129,8 +127,8 @@ class EvaluationCallback(TrainerCallback):
             ]
         )
 
-        df_swuggy = pd.read_csv(Path(self.output_dir) / "scores/score_lexical_test_by_frequency.csv", index_col=0)
-        df_sblimp = pd.read_csv(Path(self.output_dir) / "scores/score_syntactic_test_by_type.csv", index_col=0)
+        df_swuggy = pd.read_csv(Path(args.output_dir) / "scores/score_lexical_test_by_frequency.csv", index_col=0)
+        df_sblimp = pd.read_csv(Path(args.output_dir) / "scores/score_syntactic_test_by_type.csv", index_col=0)
 
         swuggy_all = (df_swuggy["n"] * df_swuggy["score"]).sum() / df_swuggy["n"].sum()
         swuggy_oov = df_swuggy.loc["oov", "score"]
@@ -143,7 +141,7 @@ class EvaluationCallback(TrainerCallback):
         # tSC
         data = defaultdict(dict)
 
-        with open(Path(self.output_dir) / "tSC/test.txt") as f:
+        with open(Path(args.output_dir) / "tSC/test.txt") as f:
             for line in f:
                 name, score = line.strip().split()
                 n, id_, correct = name.split("_")
@@ -157,7 +155,7 @@ class EvaluationCallback(TrainerCallback):
         pd.DataFrame(
             np.array([swuggy_all, swuggy_iv, swuggy_oov, sblimp, tSC]) * 100,
             index=["sWUGGY", "sWUGGY iv", "sWUGGY oov", "sBLIMP", "tSC"],
-        ).to_csv(Path(self.output_dir) / "scores/score_test.csv")
+        ).to_csv(Path(args.output_dir) / "scores/score_test.csv")
 
 
 class DefrostCallback(TrainerCallback):
@@ -237,7 +235,6 @@ def train(config):
         data_collator=get_collator(tokenizer),
         callbacks=[
             EvaluationCallback(
-                config.training_args.output_dir,
                 config.dataset.APP_DIR,
                 swuggy_dev_loader,
                 sblimp_dev_loader,
