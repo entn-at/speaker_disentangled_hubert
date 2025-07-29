@@ -40,3 +40,4 @@ training_args:
 speech2unit:
   model_name_or_path: "ryota-komatsu/s5-hubert"
   batch_size: 4   # work with a single 24GB VRAM GPU
+  vocab_size: 16384
