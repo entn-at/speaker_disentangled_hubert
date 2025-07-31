@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Any, Dict
 
 import numpy as np
+import pandas as pd
 import torch
 import torchaudio
-from datasets import Audio, DatasetDict, Features, Sequence, Value, load_dataset
+from datasets import Dataset, DatasetDict, load_dataset
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
 
@@ -19,51 +20,63 @@ def get_collator(
     tokenizer,
 ):
     def collator(batch) -> Dict[str, Any]:
-        input_ids = ["".join(f"<{unit}>" for unit in item["units"]) for item in batch]
-        id = [item["id"] for item in batch]
+        inputs = ["".join(f"<{unit}>" for unit in item["units"]) for item in batch]
+        inputs = tokenizer(inputs, padding=True, return_tensors="pt")
+        inputs["labels"] = inputs.input_ids.masked_fill(inputs.attention_mask.bool().logical_not(), -100)
 
-        inputs = tokenizer(input_ids, padding=True, return_tensors="pt")
-
-        input_ids = inputs.input_ids
-        attention_mask = inputs.attention_mask
-        labels = input_ids.masked_fill(attention_mask.bool().logical_not(), -100)
-
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": labels,
-            "id": id,
-        }
+        return inputs
 
     return collator
 
 
-def get_tokenize_fn(encoder, data_dir):
+def get_tokenize_fn(encoder, data_dir, text_column: str):
     data_dir = Path(data_dir).resolve()
 
-    def _tokenize(batch: Dict[str, list]):
-        input_values = [item["array"] for item in batch["audio"]]
-        attention_mask = [torch.ones_like(item["array"], dtype=torch.long) for item in batch["audio"]]
-        id = [
-            str(Path(item["path"]).relative_to(data_dir).with_suffix("")) if "path" in item else ""
-            for item in batch["audio"]
-        ]
+    def _tokenize(group: pd.DataFrame):
+        pos_filename = group.loc[group["correct"] == 1, "filename"].item()
+        neg_filename = group.loc[group["correct"] == 0, "filename"].item()
+
+        pos_path = str((data_dir / pos_filename).with_suffix(".wav"))
+        neg_path = str((data_dir / neg_filename).with_suffix(".wav"))
+
+        pos_audio, sr = torchaudio.load(pos_path)
+        neg_audio, sr = torchaudio.load(neg_path)
+
+        input_values = [pos_audio.squeeze(0), neg_audio.squeeze(0)]
+        attention_mask = [torch.ones_like(item, dtype=torch.long) for item in input_values]
 
         input_values = pad_sequence(input_values, batch_first=True)
         attention_mask = pad_sequence(attention_mask, batch_first=True)
 
         outputs = encoder(input_values.to(encoder.device), attention_mask.to(encoder.device))
 
-        units = [output["units"].tolist() for output in outputs]
-        durations = [output["durations"].tolist() for output in outputs]
+        example = {
+            "filename": {
+                "pos": pos_filename,
+                "neg": neg_filename,
+            },
+            "text": {
+                "pos": group.loc[group["correct"] == 1, text_column].item(),
+                "neg": group.loc[group["correct"] == 0, text_column].item(),
+            },
+            "units": {
+                "pos": outputs[0]["units"].tolist(),
+                "neg": outputs[1]["units"].tolist(),
+            },
+        }
 
-        return {"id": id, "units": units, "durations": durations}
+        if "frequency" in group.columns:
+            example["frequency"] = group.loc[group["correct"] == 1, "frequency"].item()
+
+        return pd.Series(example)
 
     return _tokenize
 
 
 def tokenize_eval(config):
     from ..s5hubert import S5HubertForSyllableDiscovery
+
+    tqdm.pandas()
 
     app_dir = Path(config.dataset.APP_DIR).expanduser()
     tSC_dir = Path(config.dataset.tSC_DIR)
@@ -73,39 +86,69 @@ def tokenize_eval(config):
     swuggy_test_dir = app_dir / "datasets/sLM21-dataset/lexical/test"
     sblimp_test_dir = app_dir / "datasets/sLM21-dataset/syntactic/test"
 
-    swuggy_dev_paths = glob.glob(os.path.join(swuggy_dev_dir, "*.wav"))
-    sblimp_dev_paths = glob.glob(os.path.join(sblimp_dev_dir, "*.wav"))
-    swuggy_test_paths = glob.glob(os.path.join(swuggy_test_dir, "*.wav"))
-    sblimp_test_paths = glob.glob(os.path.join(sblimp_test_dir, "*.wav"))
-    tSC_test_paths = glob.glob(os.path.join(tSC_dir, "*.wav"))
-
-    features = Features(
-        {
-            "audio": Audio(sampling_rate=16000),
-            "id": Value("string"),
-            "units": Sequence(Value("int32")),
-            "durations": Sequence(Value("int32")),
-        }
-    )
-
-    swuggy_dev = load_dataset("audiofolder", data_files=swuggy_dev_paths, split="train", features=features)
-    sblimp_dev = load_dataset("audiofolder", data_files=sblimp_dev_paths, split="train", features=features)
-    swuggy_test = load_dataset("audiofolder", data_files=swuggy_test_paths, split="train", features=features)
-    sblimp_test = load_dataset("audiofolder", data_files=sblimp_test_paths, split="train", features=features)
-    tSC_test = load_dataset("audiofolder", data_files=tSC_test_paths, split="train", features=features)
-
     encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path, device_map="cuda")
 
-    map_kwargs = dict(batched=True, batch_size=1, remove_columns="audio")
+    # sWUGGY
+    swuggy_dev = pd.read_csv(swuggy_dev_dir / "gold.csv")
+    swuggy_dev = swuggy_dev.groupby(["id", "voice"])
+    swuggy_dev = swuggy_dev.progress_apply(get_tokenize_fn(encoder, swuggy_dev_dir, "word"), include_groups=False)
+    swuggy_dev = Dataset.from_pandas(swuggy_dev)
 
-    swuggy_dev = swuggy_dev.with_format("torch").map(get_tokenize_fn(encoder, swuggy_dev_dir), **map_kwargs)
-    sblimp_dev = sblimp_dev.with_format("torch").map(get_tokenize_fn(encoder, sblimp_dev_dir), **map_kwargs)
-    swuggy_test = swuggy_test.with_format("torch").map(get_tokenize_fn(encoder, swuggy_test_dir), **map_kwargs)
-    sblimp_test = sblimp_test.with_format("torch").map(get_tokenize_fn(encoder, sblimp_test_dir), **map_kwargs)
-    tSC_test = tSC_test.with_format("torch").map(get_tokenize_fn(encoder, tSC_dir), **map_kwargs)
+    swuggy_test = pd.read_csv(swuggy_test_dir / "gold.csv")
+    swuggy_test = swuggy_test.groupby(["id", "voice"])
+    swuggy_test = swuggy_test.progress_apply(get_tokenize_fn(encoder, swuggy_test_dir, "word"), include_groups=False)
+    swuggy_test = Dataset.from_pandas(swuggy_test)
 
-    swuggy = DatasetDict({"dev": swuggy_dev, "test": swuggy_test})
-    sblimp = DatasetDict({"dev": sblimp_dev, "test": sblimp_test})
+    # sBLIMP
+    sblimp_dev = pd.read_csv(sblimp_dev_dir / "gold.csv")
+    sblimp_dev = sblimp_dev.groupby(["id", "voice", "subtype"])
+    sblimp_dev = sblimp_dev.progress_apply(
+        get_tokenize_fn(encoder, sblimp_dev_dir, "transcription"), include_groups=False
+    )
+    sblimp_dev = Dataset.from_pandas(sblimp_dev)
+
+    sblimp_test = pd.read_csv(sblimp_test_dir / "gold.csv")
+    sblimp_test = sblimp_test.groupby(["id", "voice", "subtype"])
+    sblimp_test = sblimp_test.progress_apply(
+        get_tokenize_fn(encoder, sblimp_test_dir, "transcription"), include_groups=False
+    )
+    sblimp_test = Dataset.from_pandas(sblimp_test)
+
+    # tSC
+    tSC_test_paths = sorted(glob.glob(os.path.join(tSC_dir, "*.wav")), key=lambda x: int(Path(x).stem.split("_")[0]))
+    tSC_test = []
+
+    for n in tqdm(range(0, len(tSC_test_paths), 2)):
+        pos_path = tSC_test_paths[n]
+        neg_path = tSC_test_paths[n + 1]
+
+        pos_audio, sr = torchaudio.load(pos_path)
+        neg_audio, sr = torchaudio.load(neg_path)
+
+        input_values = [pos_audio.squeeze(0), neg_audio.squeeze(0)]
+        attention_mask = [torch.ones_like(item, dtype=torch.long) for item in input_values]
+
+        input_values = pad_sequence(input_values, batch_first=True)
+        attention_mask = pad_sequence(attention_mask, batch_first=True)
+
+        outputs = encoder(input_values.to(encoder.device), attention_mask.to(encoder.device))
+
+        example = {
+            "filename": {
+                "pos": pos_path,
+                "neg": neg_path,
+            },
+            "units": {
+                "pos": outputs[0]["units"].tolist(),
+                "neg": outputs[1]["units"].tolist(),
+            },
+        }
+        tSC_test.append(example)
+
+    tSC_test = Dataset.from_list(tSC_test)
+
+    swuggy = DatasetDict({"validation": swuggy_dev, "test": swuggy_test})
+    sblimp = DatasetDict({"validation": sblimp_dev, "test": sblimp_test})
     tSC = DatasetDict({"test": tSC_test})
 
     swuggy.push_to_hub(config.dataset.name, "sWUGGY")
