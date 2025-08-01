@@ -43,7 +43,7 @@ class EvaluationCallback(TrainerCallback):
             metrics[pos_scores == neg_scores] = 50
             metrics[pos_scores < neg_scores] = 0
 
-            batch["metrics"] = metrics.cpu().numpy()
+            batch["metrics"] = metrics.tolist()
             return batch
 
         return evaluator
@@ -71,10 +71,10 @@ class EvaluationCallback(TrainerCallback):
 
         pd.DataFrame(
             [
-                sWUGGY["metrics"].mean(),
-                sWUGGY.filter(is_in_vocab)["metrics"].mean(),
-                sWUGGY.filter(is_out_of_vocab)["metrics"].mean(),
-                sBLIMP["metrics"].mean(),
+                np.mean(sWUGGY["metrics"]),
+                np.mean(sWUGGY.filter(is_in_vocab)["metrics"]),
+                np.mean(sWUGGY.filter(is_out_of_vocab)["metrics"]),
+                np.mean(sBLIMP["metrics"]),
             ],
             index=["sWUGGY", "sWUGGY IV", "sWUGGY OOV", "sBLIMP"],
         ).to_csv(Path(args.output_dir) / f"score_dev_{state.global_step}.csv")
@@ -101,11 +101,11 @@ class EvaluationCallback(TrainerCallback):
 
         pd.DataFrame(
             [
-                sWUGGY["metrics"].mean(),
-                sWUGGY.filter(is_in_vocab)["metrics"].mean(),
-                sWUGGY.filter(is_out_of_vocab)["metrics"].mean(),
-                sBLIMP["metrics"].mean(),
-                tSC["metrics"].mean(),
+                np.mean(sWUGGY["metrics"]),
+                np.mean(sWUGGY.filter(is_in_vocab)["metrics"]),
+                np.mean(sWUGGY.filter(is_out_of_vocab)["metrics"]),
+                np.mean(sBLIMP["metrics"]),
+                np.mean(tSC["metrics"]),
             ],
             index=["sWUGGY", "sWUGGY IV", "sWUGGY OOV", "sBLIMP", "tSC"],
         ).to_csv(Path(args.output_dir) / f"score_test_{state.global_step}.csv")
@@ -126,6 +126,8 @@ class DefrostCallback(TrainerCallback):
 def train(config):
     # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config.model.name)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
     vocab = tokenizer.get_vocab()
     vocab_size = config.speech2unit.vocab_size
     units = [f"<{unit}>" for unit in range(vocab_size)]
