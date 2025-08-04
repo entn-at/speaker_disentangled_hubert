@@ -127,7 +127,7 @@ python main_unit2speech.py train_flow_matching --config=configs/unit2speech/defa
 ```shell
 GROUP_NAME=
 
-qsub -g ${GROUP_NAME} scripts/run_speechlm.bash configs/speechlm/default.yaml configs/speechlm/default_config.yaml
+qsub -g ${GROUP_NAME} scripts/run_speechlm_deepspeed.bash configs/speechlm/default.yaml configs/speechlm/deepspeed.yaml
 ```
 
 ## Citation

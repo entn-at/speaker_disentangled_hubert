@@ -9,7 +9,7 @@
 #$ -M EMAIL_ADDRESS
 
 config=${1:-configs/speechlm/default.yaml}
-config_file=${2:-configs/speechlm/default_config.yaml}
+config_file=${2:-configs/speechlm/ddp.yaml}
 
 module load openmpi/5.0.7-nvhpc
 module load cudnn/9.0.0
