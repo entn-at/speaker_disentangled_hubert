@@ -28,6 +28,7 @@ sh scripts/setup.sh
 
 ```python
 import torchaudio
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.flow_matching import FlowMatchingWithBigVGan
 from src.s5hubert import S5HubertForSyllableDiscovery
@@ -37,6 +38,8 @@ wav_path = "/path/to/wav"
 # download pretrained models from hugging face hub
 encoder = S5HubertForSyllableDiscovery.from_pretrained("ryota-komatsu/s5-hubert", device_map="cuda")
 decoder = FlowMatchingWithBigVGan.from_pretrained("ryota-komatsu/s5-hubert-decoder", device_map="cuda")
+speechlm = AutoModelForCausalLM.from_pretrained("/path/to/speechLM", device_map="cuda")
+tokenizer = AutoTokenizer.from_pretrained("/path/to/speechLM")
 
 # load a waveform
 waveform, sr = torchaudio.load(wav_path)
@@ -47,10 +50,14 @@ outputs = encoder(waveform.to(encoder.device))
 
 # syllabic units
 units = outputs[0]["units"]  # [3950, 67, ..., 503]
-units = units.unsqueeze(0)
 
 # unit-to-speech synthesis
-audio_values = decoder(units)
+audio_values = decoder(units.unsqueeze(0))
+
+# speech LM
+inputs = "".join(f"<{unit}>" for unit in units)
+inputs = tokenizer(inputs, padding=True, return_tensors="pt").to(speechlm.device)
+speechlm(**inputs)
 ```
 
 ## Demo

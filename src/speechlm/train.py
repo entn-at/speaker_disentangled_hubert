@@ -31,11 +31,11 @@ class EvaluationCallback(TrainerCallback):
 
             labels = inputs.input_ids.masked_fill(inputs.attention_mask.bool().logical_not(), -100)
             labels = F.pad(labels, (0, 1), value=-100)
-            shifted_labels = labels[:, 1:]
+            labels = labels[:, 1:]
 
             # log likelihood
-            scores = -F.cross_entropy(logits, shifted_labels, reduction="none")
-            scores = scores.sum(dim=1) / shifted_labels.ne(-100).sum(dim=1)
+            scores = -F.cross_entropy(logits, labels, reduction="none")
+            scores = scores.sum(dim=1) / labels.ne(-100).sum(dim=1)
             pos_scores, neg_scores = scores.chunk(2)
 
             metrics = torch.zeros_like(pos_scores)
@@ -112,12 +112,13 @@ class EvaluationCallback(TrainerCallback):
 
 
 class DefrostCallback(TrainerCallback):
-    def __init__(self, handle_input_embeddings, handle_output_embeddings):
+    def __init__(self, handle_input_embeddings, handle_output_embeddings, defrost_steps: int):
         self.handle_input_embeddings = handle_input_embeddings
         self.handle_output_embeddings = handle_output_embeddings
+        self.defrost_steps = defrost_steps
 
     def on_step_end(self, args, state, control, model, **kwargs):
-        if state.global_step == args.warmup_steps:
+        if state.global_step == self.defrost_steps:
             self.handle_input_embeddings.remove()
             self.handle_output_embeddings.remove()
             model.requires_grad_(True)
@@ -166,7 +167,7 @@ def train(config):
         data_collator=get_collator(tokenizer),
         callbacks=[
             EvaluationCallback(eval_dataset),
-            DefrostCallback(handle_input_embeddings, handle_output_embeddings),
+            DefrostCallback(handle_input_embeddings, handle_output_embeddings, config.model.defrost_steps),
         ],
     )
     trainer.train(resume_from_checkpoint=config.training_args.resume_from_checkpoint)
