@@ -15,7 +15,7 @@ torch.serialization.add_safe_globals([np.core.multiarray._reconstruct, np.ndarra
 
 
 class EvaluationCallback(TrainerCallback):
-    def __init__(self, eval_dataset):
+    def __init__(self, eval_dataset: Dict):
         self.eval_dataset = eval_dataset
 
     def get_evaluator(self, model, processing_class):

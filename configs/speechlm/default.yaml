@@ -14,7 +14,7 @@ dataset:
 model:
   name: "meta-llama/Llama-3.2-3B"
   mean_resizing: false
-  defrost_steps: 20000
+  defrost_steps: 5000
 
 training_args:
   output_dir: "models/speechlm"

@@ -28,4 +28,3 @@ torchdiffeq
 torchode
 transformers==4.51.3
 vector_quantize_pytorch
-zerospeech-benchmarks==0.9.4

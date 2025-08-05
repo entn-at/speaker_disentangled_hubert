@@ -93,10 +93,11 @@ def train_flow_matching(config):
             load_dataset(config.dataset.name, "Hi-Fi-CAPTAIN", split="train", keep_in_memory=True),
             load_dataset(config.dataset.name, "DailyTalk", split="train", keep_in_memory=True),
         ]
-    ).with_format("torch")
-    eval_dataset = load_dataset(config.dataset.name, "LibriTTS-R", split="dev", keep_in_memory=True).with_format(
-        "torch"
     )
+    eval_dataset = load_dataset(config.dataset.name, "LibriTTS-R", split="dev", keep_in_memory=True)
+
+    train_dataset = train_dataset.with_format("torch")
+    eval_dataset = eval_dataset.with_format("torch")
 
     model = FlowMatchingModel(
         FlowMatchingConfig(**OmegaConf.to_container(config.flow_matching.model_args)),
