@@ -20,7 +20,7 @@ def get_collator(
     tokenizer,
 ):
     def collator(batch) -> Dict[str, Any]:
-        inputs = ["".join(f"<{unit}>" for unit in item["units"]) for item in batch]
+        inputs = ["".join(f"<{unit}>" for unit in item["units"]) + tokenizer.eos_token for item in batch]
         inputs = tokenizer(inputs, padding=True, return_tensors="pt")
         inputs["labels"] = inputs.input_ids.masked_fill(inputs.attention_mask.bool().logical_not(), -100)
 
