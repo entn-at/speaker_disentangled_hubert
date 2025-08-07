@@ -159,6 +159,33 @@ def tokenize_eval(config):
 def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
     from ..s5hubert import S5HubertForSyllableDiscovery
 
+    data_files = sorted(
+        glob.glob(os.path.join(config.dataset.ll_dir, "**/*" + config.dataset.ext_audio), recursive=True)
+    )
+    dataset = load_dataset("audiofolder", data_files=data_files, split="train")
+    dataset = dataset.shard(num_shards=num_shards, index=shard_index)
+    dataset = dataset.with_format("torch")
+
+    encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path, device_map="cuda")
+
+    with open(f"{config.dataset.manifest_prefix}{shard_index}.json", "w") as f:
+        for example in tqdm(dataset):
+            outputs = encoder.chunk_forward(example["audio"]["array"].to(encoder.device))
+
+            for idx, output in enumerate(outputs):
+                id_ = str(Path(example["audio"]["path"]).relative_to(config.dataset.ll_dir).with_suffix(f".{idx}"))
+
+                manifest = {
+                    "id": id_,
+                    "units": output["units"].tolist(),
+                    "intermediate_units": output["intermediate_units"].tolist(),
+                }
+                f.write(json.dumps(manifest) + "\n")
+
+
+def _tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
+    from ..s5hubert import S5HubertForSyllableDiscovery
+
     dataset = load_dataset(config.dataset.train, split="train")
     dataset = dataset.shard(num_shards=num_shards, index=shard_index)
 

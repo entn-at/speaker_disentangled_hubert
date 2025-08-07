@@ -27,6 +27,9 @@ sh scripts/setup.sh
 ![](figures/usage.png)
 
 ```python
+import re
+
+import torch
 import torchaudio
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -47,17 +50,17 @@ waveform = torchaudio.functional.resample(waveform, sr, 16000)
 
 # encode a waveform into syllabic units
 outputs = encoder(waveform.to(encoder.device))
-
-# syllabic units
 units = outputs[0]["units"]  # [3950, 67, ..., 503]
 
-# unit-to-speech synthesis
-audio_values = decoder(units.unsqueeze(0))
+# speech language modeling
+text = "".join(f"<{unit}>" for unit in units)
+input_ids = tokenizer(text, padding=True, return_tensors="pt").input_ids.to(speechlm.device)
+generated_ids = speechlm.generate(input_ids=input_ids, do_sample=True, temperature=0.8)[0]
+units = tokenizer.decode(generated_ids)
+units = torch.tensor([int(unit) for unit in re.findall(r"<(\d+)>", units)], device=decoder.device)
 
-# speech LM
-inputs = "".join(f"<{unit}>" for unit in units)
-inputs = tokenizer(inputs, padding=True, return_tensors="pt").to(speechlm.device)
-speechlm(**inputs)
+# unit-to-speech synthesis
+generated_speech = decoder(units.unsqueeze(0))[0].cpu()
 ```
 
 ## Demo

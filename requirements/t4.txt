@@ -22,9 +22,9 @@ scipy==1.13.1
 soundfile==0.12.1
 tensorboard==2.17.0
 timm
-torch==2.7.1+cu126
-torchaudio==2.7.1+cu126
+torch==2.8.0+cu126
+torchaudio==2.8.0+cu126
 torchdiffeq
 torchode
-transformers==4.51.3
+transformers==4.55.0
 vector_quantize_pytorch

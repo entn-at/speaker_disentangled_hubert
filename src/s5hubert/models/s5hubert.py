@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 from torch import nn
+from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoModel
 from transformers.modeling_outputs import SequenceClassifierOutput
 from transformers.models.hubert.modeling_hubert import HubertModel, HubertPreTrainedModel
@@ -265,6 +266,7 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
         merge_threshold: Optional[float] = 0.6,
         min_duration: int = 3,
         max_duration: int = 35,
+        max_chunk: int = 400080,
     ):
         """
         Args:
@@ -285,6 +287,7 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
         self.merge_threshold = merge_threshold
         self.min_duration = min_duration
         self.max_duration = max_duration
+        self.max_chunk = max_chunk
 
         self.hubert = HubertModel(config)
         self.hubert.eval()
@@ -420,6 +423,57 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
                     "segment_features": segment_features,
                 }
             )
+        return outputs
+
+    def chunk_forward(
+        self,
+        input_values: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        batch_size: int = 16,
+    ) -> List[Dict[str, torch.Tensor]]:
+        """
+        segment a single long (e.g., 1 hour) speech.
+
+        Args:
+            input_values (`torch.FloatTensor` of shape `(sequence_length,)`):
+                Raw speech waveform.
+            attention_mask (`torch.LongTensor` of shape `(sequence_length,)`, *optional*):
+                1: non-padding
+                0: padding
+            batch_size (`int`):
+                Batch size.
+
+        Returns:
+            units (`torch.LongTensor`):
+                Discrete pseudo-syllabic units.
+            intermediate_units (`torch.LongTensor`):
+                Intermediate K-means units.
+            durations (`torch.LongTensor`):
+                Durations of units, measured in frames.
+            dense (`torch.FloatTensor` of shape `((sequence_length - 400) // 320 + 1, hidden_size)`):
+                Latent speech frame representations extracted from the syllable segmentation layer.
+        """
+
+        assert input_values.dim() == 1
+
+        outputs = []
+
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_values, dtype=torch.long)
+
+        # split a long sequence into chunks
+        input_values = torch.split(input_values, self.max_chunk)  # Tuple[torch.Tensor of shape `(len,)`]
+        attention_mask = torch.split(attention_mask, self.max_chunk)  # Tuple[torch.Tensor of shape `(len,)`]
+
+        input_values = pad_sequence(input_values, batch_first=True)  # (num_chunks, max_chunk)
+        attention_mask = pad_sequence(attention_mask, batch_first=True)  # (num_chunks, max_chunk)
+
+        # split chunks into batch
+        input_values = torch.split(input_values, batch_size)
+        attention_mask = torch.split(attention_mask, batch_size)
+
+        for chunk_input_values, chunk_attention_mask in zip(input_values, attention_mask):
+            outputs += self(chunk_input_values, chunk_attention_mask)
         return outputs
 
     @torch.inference_mode()

@@ -1,5 +1,4 @@
-from tokenizers import Regex, Tokenizer, models, processors
-from tokenizers.pre_tokenizers import Split
+from tokenizers import Regex, Tokenizer, models, pre_tokenizers, processors
 from transformers import PreTrainedTokenizerFast
 
 
@@ -19,7 +18,7 @@ class SpeechLMTokenizerFast(PreTrainedTokenizerFast):
         special_tokens = [(bos_token, bos_token_id)]
 
         tokenizer_object = Tokenizer(models.WordLevel(vocab, unk_token=unk_token))
-        tokenizer_object.pre_tokenizer = Split(pattern=Regex(r"<\d+>"), behavior="isolated")
+        tokenizer_object.pre_tokenizer = pre_tokenizers.Split(pattern=Regex(r"<\d+>"), behavior="isolated")
         tokenizer_object.post_processor = processors.TemplateProcessing(single=single, special_tokens=special_tokens)
 
         super().__init__(
