@@ -29,12 +29,8 @@ import torch.nn.functional as F
 from einops import rearrange
 from torch import nn
 
-from .fastspeech import FeedForward
+from .fastspeech import MLP
 from .norm import AdaptiveRMSNorm
-
-
-def exists(val):
-    return val is not None
 
 
 class RotaryEmbedding(nn.Module):
@@ -86,7 +82,7 @@ class Attention(nn.Module):
         q, k, v = self.to_qkv(x).chunk(3, dim=-1)
         q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.heads), (q, k, v))
 
-        if exists(rotary_emb):
+        if rotary_emb is not None:
             q, k = map(lambda t: apply_rotary_pos_emb(rotary_emb, t), (q, k))
 
         if mask is not None and mask.ndim != 4:
@@ -107,6 +103,30 @@ class Attention(nn.Module):
         return self.to_out(out)
 
 
+class TransformerLayer(nn.Module):
+    def __init__(
+        self,
+        hidden_size,
+        heads: int,
+        intermediate_size: int,
+        attn_dropout: float,
+        ff_dropout: float,
+    ):
+        super().__init__()
+        self.self_attn = Attention(hidden_size=hidden_size, heads=heads, dropout=attn_dropout)
+        self.mlp = MLP(hidden_size=hidden_size, intermediate_size=intermediate_size, dropout=ff_dropout)
+        self.input_layernorm = AdaptiveRMSNorm(hidden_size=hidden_size)
+        self.post_attention_layernorm = AdaptiveRMSNorm(hidden_size=hidden_size)
+
+    def forward(self, hidden_states: torch.FloatTensor, mask, rotary_emb, rmsnorm_kwargs):
+        attn_input = self.input_layernorm(hidden_states, **rmsnorm_kwargs)
+        hidden_states = self.self_attn(attn_input, mask=mask, rotary_emb=rotary_emb) + hidden_states
+
+        ff_input = self.post_attention_layernorm(hidden_states, **rmsnorm_kwargs)
+        hidden_states = self.mlp(ff_input, mask=mask) + hidden_states
+        return hidden_states
+
+
 class Transformer(nn.Module):
     def __init__(
         self,
@@ -116,70 +136,31 @@ class Transformer(nn.Module):
         intermediate_size: int,
         attn_dropout: float,
         ff_dropout: float,
-        use_unet_skip_connection: bool,
     ):
         super().__init__()
-        assert depth % 2 == 0
-        self.layers = nn.ModuleList([])
-
         self.rotary_emb = RotaryEmbedding(hidden_size=hidden_size // heads)
-
-        for ind in range(depth):
-            layer = ind + 1
-            has_skip = use_unet_skip_connection and layer > (depth // 2)
-
-            self.layers.append(
-                nn.ModuleList(
-                    [
-                        nn.Linear(hidden_size * 2, hidden_size, bias=False) if has_skip else None,
-                        AdaptiveRMSNorm(hidden_size=hidden_size),
-                        Attention(
-                            hidden_size=hidden_size,
-                            heads=heads,
-                            dropout=attn_dropout,
-                        ),
-                        AdaptiveRMSNorm(hidden_size=hidden_size),
-                        FeedForward(hidden_size=hidden_size, intermediate_size=intermediate_size, dropout=ff_dropout),
-                    ]
-                )
-            )
-
-        self.final_norm = nn.RMSNorm(hidden_size)
+        self.layers = nn.ModuleList(
+            [TransformerLayer(hidden_size, heads, intermediate_size, attn_dropout, ff_dropout) for _ in range(depth)]
+        )
+        self.norm = nn.RMSNorm(hidden_size)
 
     @property
     def device(self):
         return next(self.parameters()).device
 
-    def forward(self, x, mask=None, adaptive_rmsnorm_cond=None):
-        batch, seq_len, *_ = x.shape
-
-        # keep track of skip connections
-        skip_connects = []
+    def forward(self, hidden_states, mask=None, adaptive_rmsnorm_cond=None):
+        batch, seq_len, *_ = hidden_states.shape
 
         # rotary embeddings
         rotary_emb = self.rotary_emb(seq_len)
 
         # adaptive rmsnorm
         rmsnorm_kwargs = dict()
-        if exists(adaptive_rmsnorm_cond):
+        if adaptive_rmsnorm_cond is not None:
             rmsnorm_kwargs = dict(condition=adaptive_rmsnorm_cond)
 
         # going through the attention layers
-        for skip_combiner, attn_prenorm, attn, ff_prenorm, ff in self.layers:
-            # in the paper, they use a u-net like skip connection
-            # unclear how much this helps, as no ablations or further numbers given besides a brief one-two sentence mention
+        for layer in self.layers:
+            hidden_states = layer(hidden_states, mask, rotary_emb, rmsnorm_kwargs)
 
-            if not exists(skip_combiner):
-                skip_connects.append(x)
-            else:
-                skip_connect = skip_connects.pop()
-                x = torch.cat((x, skip_connect), dim=-1)
-                x = skip_combiner(x)
-
-            attn_input = attn_prenorm(x, **rmsnorm_kwargs)
-            x = attn(attn_input, mask=mask, rotary_emb=rotary_emb) + x
-
-            ff_input = ff_prenorm(x, **rmsnorm_kwargs)
-            x = ff(ff_input, mask=mask) + x
-
-        return self.final_norm(x)
+        return self.norm(hidden_states)

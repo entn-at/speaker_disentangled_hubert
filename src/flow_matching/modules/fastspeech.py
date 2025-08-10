@@ -30,7 +30,7 @@ class SiGLU(nn.Module):
         return F.silu(gate) * x
 
 
-class FeedForward(nn.Module):
+class MLP(nn.Module):
     """
     Multi-layered conv1d with a GLU activation function for Transformer block.
     https://arxiv.org/abs/1905.09263

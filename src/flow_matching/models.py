@@ -58,7 +58,6 @@ class FlowMatchingModel(PreTrainedModel):
             heads=config.heads,
             intermediate_size=config.intermediate_size,
             ff_dropout=config.ff_dropout,
-            use_unet_skip_connection=config.use_unet_skip_connection,
             attn_dropout=config.attn_dropout,
         )
 
