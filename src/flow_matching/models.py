@@ -52,14 +52,7 @@ class FlowMatchingModel(PreTrainedModel):
         )
         self.to_embed = nn.Linear(config.dim_in + config.dim_cond_emb, config.hidden_size)
 
-        self.transformer = Transformer(
-            hidden_size=config.hidden_size,
-            depth=config.depth,
-            heads=config.heads,
-            intermediate_size=config.intermediate_size,
-            ff_dropout=config.ff_dropout,
-            attn_dropout=config.attn_dropout,
-        )
+        self.transformer = Transformer(config)
 
         self.to_pred = nn.Linear(config.hidden_size, config.dim_in, bias=False)
         self.duration_predictor = FlowMatchingDurationPredictor(config) if config.predict_duration else None

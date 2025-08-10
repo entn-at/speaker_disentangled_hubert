@@ -36,15 +36,17 @@ class MLP(nn.Module):
     https://arxiv.org/abs/1905.09263
     """
 
-    def __init__(self, hidden_size: int, intermediate_size: int, dropout: float = 0.0, kernel_size: int = 3):
+    def __init__(self, config, kernel_size: int = 3):
         super().__init__()
 
         self.conv1 = nn.Conv1d(
-            hidden_size, intermediate_size * 2, kernel_size, stride=1, padding=(kernel_size - 1) // 2
+            config.hidden_size, config.intermediate_size * 2, kernel_size, stride=1, padding=(kernel_size - 1) // 2
         )
         self.glu = SiGLU()
-        self.dropout = nn.Dropout(dropout)
-        self.conv2 = nn.Conv1d(intermediate_size, hidden_size, kernel_size, stride=1, padding=(kernel_size - 1) // 2)
+        self.dropout = nn.Dropout(config.ff_dropout)
+        self.conv2 = nn.Conv1d(
+            config.intermediate_size, config.hidden_size, kernel_size, stride=1, padding=(kernel_size - 1) // 2
+        )
 
     def forward(self, hidden_states: torch.FloatTensor, mask: Optional[torch.BoolTensor] = None):
         """

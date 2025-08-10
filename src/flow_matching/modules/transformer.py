@@ -28,6 +28,7 @@ import torch
 import torch.nn.functional as F
 from einops import rearrange
 from torch import nn
+from transformers import PreTrainedModel
 
 from .fastspeech import MLP
 from .norm import AdaptiveRMSNorm
@@ -70,13 +71,13 @@ def apply_rotary_pos_emb(pos, t):
 
 
 class Attention(nn.Module):
-    def __init__(self, hidden_size: int, heads: int, dropout: float = 0.0):
+    def __init__(self, config):
         super().__init__()
-        self.heads = heads
-        self.dropout = dropout
+        self.heads = config.heads
+        self.dropout = config.attn_dropout
 
-        self.to_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=False)
-        self.to_out = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.to_qkv = nn.Linear(config.hidden_size, config.hidden_size * 3, bias=False)
+        self.to_out = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
 
     def forward(self, x, mask=None, rotary_emb=None):
         q, k, v = self.to_qkv(x).chunk(3, dim=-1)
@@ -104,19 +105,12 @@ class Attention(nn.Module):
 
 
 class TransformerLayer(nn.Module):
-    def __init__(
-        self,
-        hidden_size,
-        heads: int,
-        intermediate_size: int,
-        attn_dropout: float,
-        ff_dropout: float,
-    ):
+    def __init__(self, config):
         super().__init__()
-        self.self_attn = Attention(hidden_size=hidden_size, heads=heads, dropout=attn_dropout)
-        self.mlp = MLP(hidden_size=hidden_size, intermediate_size=intermediate_size, dropout=ff_dropout)
-        self.input_layernorm = AdaptiveRMSNorm(hidden_size=hidden_size)
-        self.post_attention_layernorm = AdaptiveRMSNorm(hidden_size=hidden_size)
+        self.self_attn = Attention(config)
+        self.mlp = MLP(config)
+        self.input_layernorm = AdaptiveRMSNorm(config.hidden_size)
+        self.post_attention_layernorm = AdaptiveRMSNorm(config.hidden_size)
 
     def forward(self, hidden_states: torch.FloatTensor, mask, rotary_emb, rmsnorm_kwargs):
         attn_input = self.input_layernorm(hidden_states, **rmsnorm_kwargs)
@@ -127,26 +121,12 @@ class TransformerLayer(nn.Module):
         return hidden_states
 
 
-class Transformer(nn.Module):
-    def __init__(
-        self,
-        hidden_size: int,
-        depth: int,
-        heads: int,
-        intermediate_size: int,
-        attn_dropout: float,
-        ff_dropout: float,
-    ):
-        super().__init__()
-        self.rotary_emb = RotaryEmbedding(hidden_size=hidden_size // heads)
-        self.layers = nn.ModuleList(
-            [TransformerLayer(hidden_size, heads, intermediate_size, attn_dropout, ff_dropout) for _ in range(depth)]
-        )
-        self.norm = nn.RMSNorm(hidden_size)
-
-    @property
-    def device(self):
-        return next(self.parameters()).device
+class Transformer(PreTrainedModel):
+    def __init__(self, config):
+        super().__init__(config)
+        self.rotary_emb = RotaryEmbedding(hidden_size=config.hidden_size // config.heads)
+        self.layers = nn.ModuleList([TransformerLayer(config) for _ in range(config.depth)])
+        self.norm = nn.RMSNorm(config.hidden_size)
 
     def forward(self, hidden_states, mask=None, adaptive_rmsnorm_cond=None):
         batch, seq_len, *_ = hidden_states.shape
