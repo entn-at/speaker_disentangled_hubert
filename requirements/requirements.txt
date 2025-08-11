@@ -1,5 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cu121
-accelerate==1.9.0
+accelerate==1.10.0
 beartype
 datasets==3.6.0
 einops==0.8.1

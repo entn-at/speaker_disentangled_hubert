@@ -24,12 +24,6 @@ from torch import nn
 from ..configs import FlowMatchingConfig
 
 
-class SiGLU(nn.Module):
-    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
-        x, gate = x.chunk(2, dim=-2)
-        return F.silu(gate) * x
-
-
 class MLP(nn.Module):
     """
     Multi-layered conv1d with a GLU activation function for Transformer block.
@@ -38,17 +32,18 @@ class MLP(nn.Module):
 
     def __init__(self, config, kernel_size: int = 3):
         super().__init__()
-
-        self.conv1 = nn.Conv1d(
-            config.hidden_size, config.intermediate_size * 2, kernel_size, stride=1, padding=(kernel_size - 1) // 2
+        self.gate_proj = nn.Conv1d(
+            config.hidden_size, config.intermediate_size, kernel_size, padding=(kernel_size - 1) // 2
         )
-        self.glu = SiGLU()
-        self.dropout = nn.Dropout(config.ff_dropout)
-        self.conv2 = nn.Conv1d(
-            config.intermediate_size, config.hidden_size, kernel_size, stride=1, padding=(kernel_size - 1) // 2
+        self.up_proj = nn.Conv1d(
+            config.hidden_size, config.intermediate_size, kernel_size, padding=(kernel_size - 1) // 2
         )
+        self.down_proj = nn.Conv1d(
+            config.intermediate_size, config.hidden_size, kernel_size, padding=(kernel_size - 1) // 2
+        )
+        self.act_fn = nn.SiLU()
 
-    def forward(self, hidden_states: torch.FloatTensor, mask: Optional[torch.BoolTensor] = None):
+    def forward(self, hidden_states: torch.FloatTensor, attention_mask: Optional[torch.BoolTensor] = None):
         """
         Args:
             hidden_states (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`):
@@ -59,18 +54,16 @@ class MLP(nn.Module):
         """
         hidden_states = hidden_states.transpose(-1, 1)
 
-        if mask is not None:
-            mask = mask.unsqueeze(1)
-            hidden_states = hidden_states.masked_fill(~mask, 0.0)
+        if attention_mask is not None:
+            attention_mask = attention_mask.unsqueeze(1)
+            hidden_states = hidden_states.masked_fill(~attention_mask, 0.0)
 
-        hidden_states = self.conv1(hidden_states)
-        hidden_states = self.glu(hidden_states)
-        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.act_fn(self.gate_proj(hidden_states)) * self.up_proj(hidden_states)
 
-        if mask is not None:
-            hidden_states = hidden_states.masked_fill(~mask, 0.0)
+        if attention_mask is not None:
+            hidden_states = hidden_states.masked_fill(~attention_mask, 0.0)
 
-        hidden_states = self.conv2(hidden_states)
+        hidden_states = self.down_proj(hidden_states)
         hidden_states = hidden_states.transpose(-1, 1)
         return hidden_states
 

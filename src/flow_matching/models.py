@@ -108,7 +108,7 @@ class FlowMatchingModel(PreTrainedModel):
 
         hidden_states = torch.cat([xt, inputs_embeds], dim=-1)
         hidden_states = self.to_embed(hidden_states)
-        hidden_states = self.transformer(hidden_states, mask=mask, adaptive_rmsnorm_cond=time_emb)
+        hidden_states = self.transformer(hidden_states, mask, adaptive_rmsnorm_cond=time_emb)
         vt = self.to_pred(hidden_states)
 
         loss = F.mse_loss(vt[mask], ut[mask]) + duration_loss
@@ -154,7 +154,7 @@ class FlowMatchingModel(PreTrainedModel):
 
             hidden_states = torch.cat([hidden_states_cond, hidden_states_uncond])
             hidden_states = self.to_embed(hidden_states)
-            hidden_states = self.transformer(hidden_states, mask=expand_mask, adaptive_rmsnorm_cond=time_emb)
+            hidden_states = self.transformer(hidden_states, expand_mask, adaptive_rmsnorm_cond=time_emb)
 
             vt = self.to_pred(hidden_states)
             vt_cond, vt_uncond = torch.chunk(vt, 2)

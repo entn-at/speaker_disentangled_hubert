@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Union
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -76,32 +76,37 @@ class Attention(nn.Module):
         self.heads = config.heads
         self.dropout = config.attn_dropout
 
-        self.to_qkv = nn.Linear(config.hidden_size, config.hidden_size * 3, bias=False)
-        self.to_out = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+        self.q_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+        self.k_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+        self.v_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+        self.o_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
 
-    def forward(self, x, mask=None, rotary_emb=None):
-        q, k, v = self.to_qkv(x).chunk(3, dim=-1)
+    def forward(self, hidden_states, position_embeddings, attention_mask: Optional[torch.BoolTensor] = None):
+        q = self.q_proj(hidden_states)
+        k = self.k_proj(hidden_states)
+        v = self.v_proj(hidden_states)
         q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.heads), (q, k, v))
 
-        if rotary_emb is not None:
-            q, k = map(lambda t: apply_rotary_pos_emb(rotary_emb, t), (q, k))
-
-        if mask is not None and mask.ndim != 4:
-            mask = mask.unsqueeze(1).unsqueeze(2)
+        q, k = map(lambda t: apply_rotary_pos_emb(position_embeddings, t), (q, k))
 
         bsz, heads, q_len, _ = q.shape
 
         # Check if mask exists and expand to compatible shape
         # The mask is B L, so it would have to be expanded to B H N L
-        if mask is not None:
-            mask = mask.expand(-1, heads, q_len, -1)
+        if attention_mask is not None and attention_mask.ndim != 4:
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+
+        if attention_mask is not None:
+            attention_mask = attention_mask.expand(-1, heads, q_len, -1)
 
         # Check if there is a compatible device for flash attention
         # pytorch 2.0 flash attn: q, k, v, mask, dropout, softmax_scale
-        out = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=self.dropout if self.training else 0.0)
+        out = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=attention_mask, dropout_p=self.dropout if self.training else 0.0
+        )
 
         out = rearrange(out, "b h n d -> b n (h d)")
-        return self.to_out(out)
+        return self.o_proj(out)
 
 
 class TransformerLayer(nn.Module):
@@ -112,12 +117,18 @@ class TransformerLayer(nn.Module):
         self.input_layernorm = AdaptiveRMSNorm(config.hidden_size)
         self.post_attention_layernorm = AdaptiveRMSNorm(config.hidden_size)
 
-    def forward(self, hidden_states: torch.FloatTensor, mask, rotary_emb, rmsnorm_kwargs):
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        attention_mask: Optional[torch.BoolTensor],
+        position_embeddings,
+        rmsnorm_kwargs,
+    ):
         attn_input = self.input_layernorm(hidden_states, **rmsnorm_kwargs)
-        hidden_states = self.self_attn(attn_input, mask=mask, rotary_emb=rotary_emb) + hidden_states
+        hidden_states = self.self_attn(attn_input, position_embeddings, attention_mask) + hidden_states
 
         ff_input = self.post_attention_layernorm(hidden_states, **rmsnorm_kwargs)
-        hidden_states = self.mlp(ff_input, mask=mask) + hidden_states
+        hidden_states = self.mlp(ff_input, attention_mask) + hidden_states
         return hidden_states
 
 
@@ -128,11 +139,11 @@ class Transformer(PreTrainedModel):
         self.layers = nn.ModuleList([TransformerLayer(config) for _ in range(config.depth)])
         self.norm = nn.RMSNorm(config.hidden_size)
 
-    def forward(self, hidden_states, mask=None, adaptive_rmsnorm_cond=None):
+    def forward(self, hidden_states, attention_mask: Optional[torch.BoolTensor] = None, adaptive_rmsnorm_cond=None):
         batch, seq_len, *_ = hidden_states.shape
 
         # rotary embeddings
-        rotary_emb = self.rotary_emb(seq_len)
+        position_embeddings = self.rotary_emb(seq_len)
 
         # adaptive rmsnorm
         rmsnorm_kwargs = dict()
@@ -141,6 +152,6 @@ class Transformer(PreTrainedModel):
 
         # going through the attention layers
         for layer in self.layers:
-            hidden_states = layer(hidden_states, mask, rotary_emb, rmsnorm_kwargs)
+            hidden_states = layer(hidden_states, attention_mask, position_embeddings, rmsnorm_kwargs)
 
         return self.norm(hidden_states)
