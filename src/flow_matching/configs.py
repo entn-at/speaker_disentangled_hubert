@@ -12,16 +12,15 @@ class FlowMatchingConfig(PretrainedConfig):
         dim_in: int = 80,
         dim_cond_emb: int = 768,
         hidden_size: int = 256,
-        depth: int = 4,
-        heads: int = 2,
+        num_hidden_layers: int = 4,
+        num_attention_heads: int = 2,
         intermediate_size: int = 768,
-        attn_dropout: float = 0.0,
-        ff_dropout: float = 0.0,
+        attention_dropout: float = 0.0,
         cfg_dropout: float = 0.2,
-        use_unet_skip_connection: bool = False,
         mean: float = -5.8843,
         std: float = 2.2615,
         predict_duration: bool = True,
+        rope_theta: float = 10000.0,
         dt: float = 0.1,
         cfg_strength: float = 0.7,
         **kwargs,
@@ -30,16 +29,15 @@ class FlowMatchingConfig(PretrainedConfig):
         self.dim_in = dim_in
         self.dim_cond_emb = dim_cond_emb
         self.hidden_size = hidden_size
-        self.depth = depth
-        self.heads = heads
+        self.num_hidden_layers = num_hidden_layers
+        self.num_attention_heads = num_attention_heads
         self.intermediate_size = intermediate_size
-        self.attn_dropout = attn_dropout
-        self.ff_dropout = ff_dropout
+        self.attention_dropout = attention_dropout
         self.cfg_dropout = cfg_dropout
-        self.use_unet_skip_connection = use_unet_skip_connection
         self.mean = mean
         self.std = std
         self.predict_duration = predict_duration
+        self.rope_theta = rope_theta
         self.dt = dt
         self.cfg_strength = cfg_strength
         super().__init__(**kwargs)

@@ -36,7 +36,7 @@ from ..bigvgan.data import dynamic_range_compression_torch
 from .configs import FlowMatchingConfig, FlowMatchingWithBigVGanConfig
 from .modules.fastspeech import FlowMatchingDurationPredictor
 from .modules.time_embed import TimestepEmbedding
-from .modules.transformer import Transformer
+from .modules.transformer import RotaryEmbedding, TransformerLayer
 
 
 class FlowMatchingModel(PreTrainedModel):
@@ -52,7 +52,9 @@ class FlowMatchingModel(PreTrainedModel):
         )
         self.to_embed = nn.Linear(config.dim_in + config.dim_cond_emb, config.hidden_size)
 
-        self.transformer = Transformer(config)
+        self.layers = nn.ModuleList([TransformerLayer(config) for _ in range(config.num_hidden_layers)])
+        self.norm = nn.RMSNorm(config.hidden_size)
+        self.rotary_emb = RotaryEmbedding(config)
 
         self.to_pred = nn.Linear(config.hidden_size, config.dim_in, bias=False)
         self.duration_predictor = FlowMatchingDurationPredictor(config) if config.predict_duration else None
@@ -108,7 +110,18 @@ class FlowMatchingModel(PreTrainedModel):
 
         hidden_states = torch.cat([xt, inputs_embeds], dim=-1)
         hidden_states = self.to_embed(hidden_states)
-        hidden_states = self.transformer(hidden_states, mask, adaptive_rmsnorm_cond=time_emb)
+
+        # rotary embeddings
+        position_embeddings = self.rotary_emb(seq_len)
+
+        # adaptive rmsnorm
+        rmsnorm_kwargs = dict(condition=time_emb)
+
+        # going through the attention layers
+        for layer in self.layers:
+            hidden_states = layer(hidden_states, mask, position_embeddings, rmsnorm_kwargs)
+
+        hidden_states = self.norm(hidden_states)
         vt = self.to_pred(hidden_states)
 
         loss = F.mse_loss(vt[mask], ut[mask]) + duration_loss
@@ -154,7 +167,18 @@ class FlowMatchingModel(PreTrainedModel):
 
             hidden_states = torch.cat([hidden_states_cond, hidden_states_uncond])
             hidden_states = self.to_embed(hidden_states)
-            hidden_states = self.transformer(hidden_states, expand_mask, adaptive_rmsnorm_cond=time_emb)
+
+            # rotary embeddings
+            position_embeddings = self.rotary_emb(seq_len)
+
+            # adaptive rmsnorm
+            rmsnorm_kwargs = dict(condition=time_emb)
+
+            # going through the attention layers
+            for layer in self.layers:
+                hidden_states = layer(hidden_states, expand_mask, position_embeddings, rmsnorm_kwargs)
+
+            hidden_states = self.norm(hidden_states)
 
             vt = self.to_pred(hidden_states)
             vt_cond, vt_uncond = torch.chunk(vt, 2)

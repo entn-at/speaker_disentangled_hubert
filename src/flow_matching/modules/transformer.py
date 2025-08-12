@@ -28,7 +28,7 @@ import torch
 import torch.nn.functional as F
 from einops import rearrange
 from torch import nn
-from transformers import PreTrainedModel
+from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 
 from .fastspeech import MLP
 from .norm import AdaptiveRMSNorm
@@ -40,9 +40,9 @@ class RotaryEmbedding(nn.Module):
     https://arxiv.org/abs/2104.09864
     """
 
-    def __init__(self, hidden_size: int, theta=10000):
+    def __init__(self, config):
         super().__init__()
-        inv_freq = 1.0 / (theta ** (torch.arange(0, hidden_size, 2).float() / hidden_size))
+        inv_freq, _ = ROPE_INIT_FUNCTIONS["default"](config)
         self.register_buffer("inv_freq", inv_freq)
 
     @property
@@ -56,8 +56,10 @@ class RotaryEmbedding(nn.Module):
 
         t = t.type_as(self.inv_freq)
         freqs = torch.einsum("i , j -> i j", t, self.inv_freq)
-        freqs = torch.cat((freqs, freqs), dim=-1)
-        return freqs
+        emb = torch.cat((freqs, freqs), dim=-1)
+        cos = emb.cos()
+        sin = emb.sin()
+        return cos, sin
 
 
 def rotate_half(x):
@@ -65,29 +67,36 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-@torch.autocast("cuda", enabled=False)
-def apply_rotary_pos_emb(pos, t):
-    return t * pos.cos() + rotate_half(t) * pos.sin()
+def apply_rotary_pos_emb(q, k, cos, sin):
+    q_embed = q * cos + rotate_half(q) * sin
+    k_embed = k * cos + rotate_half(k) * sin
+    return q_embed, k_embed
 
 
 class Attention(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.heads = config.heads
-        self.dropout = config.attn_dropout
+        self.num_attention_heads = config.num_attention_heads
+        self.attention_dropout = config.attention_dropout
 
         self.q_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
         self.k_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
         self.v_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
         self.o_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
 
-    def forward(self, hidden_states, position_embeddings, attention_mask: Optional[torch.BoolTensor] = None):
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.BoolTensor] = None,
+    ):
         q = self.q_proj(hidden_states)
         k = self.k_proj(hidden_states)
         v = self.v_proj(hidden_states)
-        q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.heads), (q, k, v))
+        q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.num_attention_heads), (q, k, v))
 
-        q, k = map(lambda t: apply_rotary_pos_emb(position_embeddings, t), (q, k))
+        cos, sin = position_embeddings
+        q, k = apply_rotary_pos_emb(q, k, cos, sin)
 
         bsz, heads, q_len, _ = q.shape
 
@@ -102,7 +111,7 @@ class Attention(nn.Module):
         # Check if there is a compatible device for flash attention
         # pytorch 2.0 flash attn: q, k, v, mask, dropout, softmax_scale
         out = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=attention_mask, dropout_p=self.dropout if self.training else 0.0
+            q, k, v, attn_mask=attention_mask, dropout_p=self.attention_dropout if self.training else 0.0
         )
 
         out = rearrange(out, "b h n d -> b n (h d)")
@@ -121,7 +130,7 @@ class TransformerLayer(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         attention_mask: Optional[torch.BoolTensor],
-        position_embeddings,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor],
         rmsnorm_kwargs,
     ):
         attn_input = self.input_layernorm(hidden_states, **rmsnorm_kwargs)
@@ -130,28 +139,3 @@ class TransformerLayer(nn.Module):
         ff_input = self.post_attention_layernorm(hidden_states, **rmsnorm_kwargs)
         hidden_states = self.mlp(ff_input, attention_mask) + hidden_states
         return hidden_states
-
-
-class Transformer(PreTrainedModel):
-    def __init__(self, config):
-        super().__init__(config)
-        self.rotary_emb = RotaryEmbedding(hidden_size=config.hidden_size // config.heads)
-        self.layers = nn.ModuleList([TransformerLayer(config) for _ in range(config.depth)])
-        self.norm = nn.RMSNorm(config.hidden_size)
-
-    def forward(self, hidden_states, attention_mask: Optional[torch.BoolTensor] = None, adaptive_rmsnorm_cond=None):
-        batch, seq_len, *_ = hidden_states.shape
-
-        # rotary embeddings
-        position_embeddings = self.rotary_emb(seq_len)
-
-        # adaptive rmsnorm
-        rmsnorm_kwargs = dict()
-        if adaptive_rmsnorm_cond is not None:
-            rmsnorm_kwargs = dict(condition=adaptive_rmsnorm_cond)
-
-        # going through the attention layers
-        for layer in self.layers:
-            hidden_states = layer(hidden_states, attention_mask, position_embeddings, rmsnorm_kwargs)
-
-        return self.norm(hidden_states)
