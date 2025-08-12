@@ -29,15 +29,108 @@ import torch.nn.functional as F
 from torch import nn
 from transformers import PreTrainedModel
 from transformers.models.fastspeech2_conformer.modeling_fastspeech2_conformer import length_regulator
-from transformers.models.qwen3.modeling_qwen3 import Qwen3RotaryEmbedding
+from transformers.models.qwen2_5_omni.modeling_qwen2_5_omni import SinusPositionEmbedding
+from transformers.models.qwen3.modeling_qwen3 import Qwen3RotaryEmbedding, apply_rotary_pos_emb
 from transformers.utils import ModelOutput
 
 from ..bigvgan.bigvgan import BigVGan, BigVGanConfig
 from ..bigvgan.data import dynamic_range_compression_torch
 from .configs import FlowMatchingConfig, FlowMatchingWithBigVGanConfig
-from .modules.fastspeech import FlowMatchingDurationPredictor
-from .modules.time_embed import TimestepEmbedding
-from .modules.transformer import TransformerLayer
+from .modules.fastspeech import MLP, FlowMatchingDurationPredictor
+from .modules.norm import AdaptiveRMSNorm
+
+
+class Attention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.head_dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
+        self.attention_dropout = config.attention_dropout
+
+        self.q_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+        self.k_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+        self.v_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+        self.o_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.BoolTensor] = None,
+    ):
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
+
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+
+        cos, sin = position_embeddings
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        bsz, heads, q_len, _ = query_states.shape
+
+        # Check if mask exists and expand to compatible shape
+        # The mask is B L, so it would have to be expanded to B H N L
+        if attention_mask is not None and attention_mask.ndim != 4:
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+
+        if attention_mask is not None:
+            attention_mask = attention_mask.expand(-1, heads, q_len, -1)
+
+        attn_output = F.scaled_dot_product_attention(
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            self.attention_dropout if self.training else 0.0,
+        )
+
+        attn_output = attn_output.transpose(1, 2).reshape(*input_shape, -1).contiguous()
+        return self.o_proj(attn_output)
+
+
+class TransformerLayer(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.self_attn = Attention(config)
+        self.mlp = MLP(config)
+        self.input_layernorm = AdaptiveRMSNorm(config.hidden_size)
+        self.post_attention_layernorm = AdaptiveRMSNorm(config.hidden_size)
+
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        attention_mask: Optional[torch.BoolTensor],
+        position_embeddings: tuple[torch.Tensor, torch.Tensor],
+        time_embeddings: torch.FloatTensor,
+    ):
+        attn_input = self.input_layernorm(hidden_states, time_embeddings)
+        hidden_states = self.self_attn(attn_input, position_embeddings, attention_mask) + hidden_states
+
+        ff_input = self.post_attention_layernorm(hidden_states, time_embeddings)
+        hidden_states = self.mlp(ff_input, attention_mask) + hidden_states
+        return hidden_states
+
+
+class TimestepEmbedding(nn.Module):
+    def __init__(self, hidden_size: int, freq_embed_size: int = 256):
+        super().__init__()
+        self.time_embed = SinusPositionEmbedding(freq_embed_size)
+        self.mlp = nn.Sequential(nn.Linear(freq_embed_size, hidden_size), nn.SiLU())
+
+    def forward(self, timesteps: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            timesteps (`torch.Tensor` of shape `(batch_size,)`):
+                diffusion timesteps.
+        Returns:
+            embeddings (`torch.Tensor` of shape `(batch_size, hidden_size)`):
+                condition for adaptive norm layers.
+        """
+        embeddings = self.time_embed(timesteps)
+        embeddings = embeddings.to(timesteps.dtype)
+        embeddings = self.mlp(embeddings)
+        return embeddings
 
 
 class FlowMatchingModel(PreTrainedModel):
