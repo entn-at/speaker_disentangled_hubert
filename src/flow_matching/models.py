@@ -29,6 +29,7 @@ import torch.nn.functional as F
 from torch import nn
 from transformers import PreTrainedModel
 from transformers.models.fastspeech2_conformer.modeling_fastspeech2_conformer import length_regulator
+from transformers.models.qwen3.modeling_qwen3 import Qwen3RotaryEmbedding
 from transformers.utils import ModelOutput
 
 from ..bigvgan.bigvgan import BigVGan, BigVGanConfig
@@ -36,7 +37,7 @@ from ..bigvgan.data import dynamic_range_compression_torch
 from .configs import FlowMatchingConfig, FlowMatchingWithBigVGanConfig
 from .modules.fastspeech import FlowMatchingDurationPredictor
 from .modules.time_embed import TimestepEmbedding
-from .modules.transformer import RotaryEmbedding, TransformerLayer
+from .modules.transformer import TransformerLayer
 
 
 class FlowMatchingModel(PreTrainedModel):
@@ -54,7 +55,7 @@ class FlowMatchingModel(PreTrainedModel):
 
         self.layers = nn.ModuleList([TransformerLayer(config) for _ in range(config.num_hidden_layers)])
         self.norm = nn.RMSNorm(config.hidden_size)
-        self.rotary_emb = RotaryEmbedding(config)
+        self.rotary_emb = Qwen3RotaryEmbedding(config)
 
         self.to_pred = nn.Linear(config.hidden_size, config.dim_in, bias=False)
         self.duration_predictor = FlowMatchingDurationPredictor(config) if config.predict_duration else None
@@ -101,7 +102,7 @@ class FlowMatchingModel(PreTrainedModel):
             duration_labels = torch.log(duration_labels.float() + self.duration_predictor.log_domain_offset)
             duration_loss = F.mse_loss(duration_predictions, duration_labels)
 
-        time_emb = self.time_cond_mlp(timesteps)
+        time_embeddings = self.time_cond_mlp(timesteps)
 
         # drop condition for classifier-free guidance
         dropout_mask = torch.rand(bsz, 1, 1, device=inputs_embeds.device) < self.config.cfg_dropout
@@ -112,14 +113,12 @@ class FlowMatchingModel(PreTrainedModel):
         hidden_states = self.to_embed(hidden_states)
 
         # rotary embeddings
-        position_embeddings = self.rotary_emb(seq_len)
-
-        # adaptive rmsnorm
-        rmsnorm_kwargs = dict(condition=time_emb)
+        position_ids = torch.arange(inputs_embeds.shape[1], device=inputs_embeds.device).unsqueeze(0)
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
         # going through the attention layers
         for layer in self.layers:
-            hidden_states = layer(hidden_states, mask, position_embeddings, rmsnorm_kwargs)
+            hidden_states = layer(hidden_states, mask, position_embeddings, time_embeddings)
 
         hidden_states = self.norm(hidden_states)
         vt = self.to_pred(hidden_states)
@@ -157,26 +156,23 @@ class FlowMatchingModel(PreTrainedModel):
         xt = torch.randn(bsz, seq_len, self.config.dim_in, device=inputs_embeds.device)
         expand_mask = torch.cat([mask, mask])
 
+        # rotary embeddings
+        position_ids = torch.arange(inputs_embeds.shape[1], device=inputs_embeds.device).unsqueeze(0)
+        position_embeddings = self.rotary_emb(inputs_embeds, position_ids)
+
         for t in torch.arange(0, 1, self.config.dt, device=self.device):
-            time_emb = self.time_cond_mlp(t.unsqueeze(0).expand(2 * bsz))
+            time_embeddings = self.time_cond_mlp(t.unsqueeze(0).expand(2 * bsz))
 
             # concat source signal, semantic / phoneme conditioning embed, and conditioning
             # and project
             hidden_states_cond = torch.cat([xt, inputs_embeds], dim=-1)
             hidden_states_uncond = torch.cat([xt, torch.zeros_like(inputs_embeds)], dim=-1)
-
             hidden_states = torch.cat([hidden_states_cond, hidden_states_uncond])
             hidden_states = self.to_embed(hidden_states)
 
-            # rotary embeddings
-            position_embeddings = self.rotary_emb(seq_len)
-
-            # adaptive rmsnorm
-            rmsnorm_kwargs = dict(condition=time_emb)
-
             # going through the attention layers
             for layer in self.layers:
-                hidden_states = layer(hidden_states, expand_mask, position_embeddings, rmsnorm_kwargs)
+                hidden_states = layer(hidden_states, expand_mask, position_embeddings, time_embeddings)
 
             hidden_states = self.norm(hidden_states)
 

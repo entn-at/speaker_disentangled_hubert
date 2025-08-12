@@ -21,6 +21,7 @@ class FlowMatchingConfig(PretrainedConfig):
         std: float = 2.2615,
         predict_duration: bool = True,
         rope_theta: float = 10000.0,
+        max_position_embeddings=None,
         dt: float = 0.1,
         cfg_strength: float = 0.7,
         **kwargs,
@@ -38,6 +39,7 @@ class FlowMatchingConfig(PretrainedConfig):
         self.std = std
         self.predict_duration = predict_duration
         self.rope_theta = rope_theta
+        self.max_position_embeddings = max_position_embeddings
         self.dt = dt
         self.cfg_strength = cfg_strength
         super().__init__(**kwargs)

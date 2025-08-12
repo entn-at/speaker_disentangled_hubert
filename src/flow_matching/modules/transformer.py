@@ -22,55 +22,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from einops import rearrange
 from torch import nn
-from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
+from transformers.models.qwen3.modeling_qwen3 import apply_rotary_pos_emb
 
 from .fastspeech import MLP
 from .norm import AdaptiveRMSNorm
-
-
-class RotaryEmbedding(nn.Module):
-    """
-    rotary positional embeddings
-    https://arxiv.org/abs/2104.09864
-    """
-
-    def __init__(self, config):
-        super().__init__()
-        inv_freq, _ = ROPE_INIT_FUNCTIONS["default"](config)
-        self.register_buffer("inv_freq", inv_freq)
-
-    @property
-    def device(self):
-        return self.inv_freq.device
-
-    @torch.autocast("cuda", enabled=False)
-    def forward(self, t: Union[int, torch.Tensor]):
-        if not torch.is_tensor(t):
-            t = torch.arange(t, device=self.device)
-
-        t = t.type_as(self.inv_freq)
-        freqs = torch.einsum("i , j -> i j", t, self.inv_freq)
-        emb = torch.cat((freqs, freqs), dim=-1)
-        cos = emb.cos()
-        sin = emb.sin()
-        return cos, sin
-
-
-def rotate_half(x):
-    x1, x2 = x.chunk(2, dim=-1)
-    return torch.cat((-x2, x1), dim=-1)
-
-
-def apply_rotary_pos_emb(q, k, cos, sin):
-    q_embed = q * cos + rotate_half(q) * sin
-    k_embed = k * cos + rotate_half(k) * sin
-    return q_embed, k_embed
 
 
 class Attention(nn.Module):
@@ -131,11 +92,11 @@ class TransformerLayer(nn.Module):
         hidden_states: torch.FloatTensor,
         attention_mask: Optional[torch.BoolTensor],
         position_embeddings: tuple[torch.Tensor, torch.Tensor],
-        rmsnorm_kwargs,
+        time_embeddings: torch.FloatTensor,
     ):
-        attn_input = self.input_layernorm(hidden_states, **rmsnorm_kwargs)
+        attn_input = self.input_layernorm(hidden_states, time_embeddings)
         hidden_states = self.self_attn(attn_input, position_embeddings, attention_mask) + hidden_states
 
-        ff_input = self.post_attention_layernorm(hidden_states, **rmsnorm_kwargs)
+        ff_input = self.post_attention_layernorm(hidden_states, time_embeddings)
         hidden_states = self.mlp(ff_input, attention_mask) + hidden_states
         return hidden_states

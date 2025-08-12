@@ -35,10 +35,10 @@ class AdaptiveRMSNorm(nn.Module):
         self.to_weight = nn.Linear(hidden_size, hidden_size, bias=False)
         nn.init.zeros_(self.to_weight.weight)
 
-    def forward(self, x, *, condition):
-        if condition.ndim == 2:
-            condition = rearrange(condition, "b d -> b 1 d")
+    def forward(self, x, time_embeddings):
+        if time_embeddings.ndim == 2:
+            time_embeddings = rearrange(time_embeddings, "b d -> b 1 d")
 
         normed = F.normalize(x, dim=-1, eps=self.eps)
-        gamma = self.to_weight(condition)
+        gamma = self.to_weight(time_embeddings)
         return normed * self.scale * (gamma + 1.0)
