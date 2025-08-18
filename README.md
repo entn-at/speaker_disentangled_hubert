@@ -6,6 +6,7 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2409.10103-<COLOR>.svg?logo=arXiv)](https://arxiv.org/abs/2409.10103)
 [![model](https://img.shields.io/badge/%F0%9F%A4%97-Model-blue)](https://huggingface.co/ryota-komatsu/s5-hubert)
 [![dataset](https://img.shields.io/badge/%F0%9F%A4%97-Datasets-blue)](https://huggingface.co/datasets/ryota-komatsu/s5-hubert)
+[![spaces](https://img.shields.io/badge/%F0%9F%A4%97-Spaces-blue)](https://huggingface.co/spaces/ryota-komatsu/speaker_disentangled_hubert)
 [![demo](https://img.shields.io/badge/Demo-blue)](https://ryota-komatsu.github.io/speaker_disentangled_hubert)
 
 This is the official repository of the IEEE SLT 2024 paper [Self-Supervised Syllable Discovery Based on Speaker-Disentangled HuBERT](https://arxiv.org/abs/2409.10103).
@@ -15,7 +16,7 @@ This is the official repository of the IEEE SLT 2024 paper [Self-Supervised Syll
 ```shell
 sudo apt install git-lfs  # for UTMOS
 
-conda create -y -n py310 -c pytorch -c nvidia -c conda-forge python=3.10.18 pip=24.0 faiss-gpu=1.11.0
+conda create -y -n py310 -c pytorch -c nvidia -c conda-forge python=3.10.18 pip=24.0 faiss-gpu=1.12.0
 conda activate py310
 pip install -r requirements/requirements.txt
 
