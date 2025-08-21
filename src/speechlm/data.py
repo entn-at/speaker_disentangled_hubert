@@ -170,7 +170,7 @@ def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
 
     with open(f"{config.dataset.manifest_prefix}{shard_index}.json", "w") as f:
         for example in tqdm(dataset):
-            outputs = encoder.chunk_forward(example["audio"]["array"].to(encoder.device))
+            outputs = encoder.chunk_forward(example["audio"]["array"].unsqueeze(0).to(encoder.device))
 
             for idx, output in enumerate(outputs):
                 id_ = str(Path(example["audio"]["path"]).relative_to(config.dataset.ll_dir).with_suffix(f".{idx}"))
