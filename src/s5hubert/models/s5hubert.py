@@ -267,6 +267,7 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
         min_duration: int = 3,
         max_duration: int = 35,
         max_chunk: int = 400080,
+        min_chunk: int = 4880,
     ):
         """
         Args:
@@ -288,6 +289,7 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
         self.min_duration = min_duration
         self.max_duration = max_duration
         self.max_chunk = max_chunk
+        self.min_chunk = min_chunk
 
         self.hubert = HubertModel(config)
         self.hubert.eval()
@@ -435,9 +437,9 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
         segment a single long (e.g., 1 hour) speech.
 
         Args:
-            input_values (`torch.FloatTensor` of shape `(sequence_length,)`):
+            input_values (`torch.FloatTensor` of shape `(1, sequence_length)`):
                 Raw speech waveform.
-            attention_mask (`torch.LongTensor` of shape `(sequence_length,)`, *optional*):
+            attention_mask (`torch.LongTensor` of shape `(1, sequence_length)`, *optional*):
                 1: non-padding
                 0: padding
             batch_size (`int`):
@@ -454,7 +456,7 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
                 Latent speech frame representations extracted from the syllable segmentation layer.
         """
 
-        assert input_values.dim() == 1
+        assert len(input_values) == 1
 
         outputs = []
 
@@ -462,18 +464,23 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
             attention_mask = torch.ones_like(input_values, dtype=torch.long)
 
         # split a long sequence into chunks
-        input_values = torch.split(input_values, self.max_chunk)  # Tuple[torch.Tensor of shape `(len,)`]
-        attention_mask = torch.split(attention_mask, self.max_chunk)  # Tuple[torch.Tensor of shape `(len,)`]
+        input_values = torch.split(input_values, self.max_chunk, dim=1)  # Tuple[torch.Tensor of shape `(1, len)`]
+        attention_mask = torch.split(attention_mask, self.max_chunk, dim=1)  # Tuple[torch.Tensor of shape `(1, len)`]
 
-        input_values = pad_sequence(input_values, batch_first=True)  # (num_chunks, max_chunk)
-        attention_mask = pad_sequence(attention_mask, batch_first=True)  # (num_chunks, max_chunk)
+        if len(input_values) > 1:
+            batch_input_values = torch.cat(input_values[:-1])  # (num_chunks, max_chunk)
+            batch_attention_mask = torch.cat(attention_mask[:-1])  # (num_chunks, max_chunk)
 
-        # split chunks into batch
-        input_values = torch.split(input_values, batch_size)
-        attention_mask = torch.split(attention_mask, batch_size)
+            # split chunks into batch
+            batch_input_values = torch.split(batch_input_values, batch_size)
+            batch_attention_mask = torch.split(batch_attention_mask, batch_size)
 
-        for chunk_input_values, chunk_attention_mask in zip(input_values, attention_mask):
-            outputs += self(chunk_input_values, chunk_attention_mask)
+            for chunk_input_values, chunk_attention_mask in zip(batch_input_values, batch_attention_mask):
+                outputs += self(chunk_input_values, chunk_attention_mask)
+
+        if input_values[-1].size(1) > self.min_chunk:
+            outputs += self(input_values[-1], attention_mask[-1])
+
         return outputs
 
     @torch.inference_mode()

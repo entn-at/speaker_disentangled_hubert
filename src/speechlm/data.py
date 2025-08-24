@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
+import librosa
 import numpy as np
 import pandas as pd
 import torch
@@ -164,13 +165,14 @@ def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
     )
     dataset = load_dataset("audiofolder", data_files=data_files, split="train")
     dataset = dataset.shard(num_shards=num_shards, index=shard_index)
-    dataset = dataset.with_format("torch")
 
     encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path, device_map="cuda")
 
-    with open(f"{config.dataset.manifest_prefix}{shard_index}.json", "w") as f:
+    with open(f"{config.dataset.manifest_prefix}{shard_index:02}.json", "w") as f:
         for example in tqdm(dataset):
-            outputs = encoder.chunk_forward(example["audio"]["array"].unsqueeze(0).to(encoder.device))
+            input_values, _ = librosa.effects.trim(example["audio"]["array"], top_db=20)
+            input_values = torch.from_numpy(input_values)
+            outputs = encoder.chunk_forward(input_values.unsqueeze(0).to(encoder.device, torch.float))
 
             for idx, output in enumerate(outputs):
                 id_ = str(Path(example["audio"]["path"]).relative_to(config.dataset.ll_dir).with_suffix(f".{idx}"))
@@ -181,6 +183,13 @@ def tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
                     "intermediate_units": output["intermediate_units"].tolist(),
                 }
                 f.write(json.dumps(manifest) + "\n")
+
+
+def merge_train(config):
+    data_files = sorted(glob.glob(f"{config.dataset.manifest_prefix}*.json"))
+    dataset = load_dataset("json", data_files=data_files, split="train")
+    dataset = DatasetDict({"train": dataset})
+    dataset.push_to_hub(config.dataset.name, "Libri-Light")
 
 
 def _tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
