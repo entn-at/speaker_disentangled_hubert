@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 import librosa
 import torch
-from datasets import Array2D, Audio, Features, Sequence, Value, load_dataset
+from datasets import Array2D, Audio, DatasetDict, Features, Sequence, Value, concatenate_datasets, load_dataset
 from torch.nn.utils.rnn import pad_sequence
 
 from ..bigvgan.data import mel_spectrogram
@@ -45,6 +45,33 @@ def tokenize(config):
         }
     )
 
+    def _tokenize(example):
+        input_values = example["audio"]["array"]
+        input_values = librosa.effects.trim(input_values, top_db=20)[0]
+        input_values = torch.from_numpy(input_values)
+        input_values = input_values.to(encoder.device, torch.float)
+        input_values = input_values / input_values.abs().max() * 0.95
+        input_values = input_values.unsqueeze(0)
+
+        spectrogram_labels = mel_spectrogram(input_values).squeeze(0)  # (80, len)
+        spectrogram_labels = spectrogram_labels.transpose(0, 1)  # (len, 80)
+        spectrogram_labels = spectrogram_labels.cpu().tolist()
+
+        outputs = encoder(input_values)
+
+        return {
+            "units": outputs[0]["units"].tolist(),
+            "durations": outputs[0]["durations"].tolist(),
+            "spectrogram": spectrogram_labels,
+        }
+
+    # Hi-Fi TTS
+    dataset = load_dataset(config.dataset.hifitts_dir, "all")
+    dataset = DatasetDict({"train": concatenate_datasets([dataset[split] for split in dataset])})
+    dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
+    dataset = dataset.map(_tokenize, remove_columns="audio")
+    dataset.push_to_hub(config.dataset.name, "hifitts")
+
     # LibriTTS-R
     data_files = {
         "train": glob.glob(os.path.join(config.dataset.libritts_dir, "train-*/**/*.wav"), recursive=True),
@@ -58,18 +85,18 @@ def tokenize(config):
     dataset.push_to_hub(config.dataset.name, "LibriTTS-R")
 
     # Hi-Fi-CAPTAIN
-    data_files = {"train": glob.glob(os.path.join(config.dataset.hfc_dir, "**/*.wav"), recursive=True)}
-    dataset = load_dataset("audiofolder", data_files=data_files, features=features)
-    dataset = dataset.with_format("torch")
-    dataset = dataset.map(get_tokenize_fn(encoder, config.dataset.hfc_dir, ""), remove_columns="audio")
-    dataset.push_to_hub(config.dataset.name, "Hi-Fi-CAPTAIN")
+    # data_files = {"train": glob.glob(os.path.join(config.dataset.hfc_dir, "**/*.wav"), recursive=True)}
+    # dataset = load_dataset("audiofolder", data_files=data_files, features=features)
+    # dataset = dataset.with_format("torch")
+    # dataset = dataset.map(get_tokenize_fn(encoder, config.dataset.hfc_dir, ""), remove_columns="audio")
+    # dataset.push_to_hub(config.dataset.name, "Hi-Fi-CAPTAIN")
 
     # DailyTalk
-    data_files = {"train": glob.glob(os.path.join(config.dataset.dailytalk_dir, "**/*.wav"), recursive=True)}
-    dataset = load_dataset("audiofolder", data_files=data_files, features=features)
-    dataset = dataset.with_format("torch")
-    dataset = dataset.map(get_tokenize_fn(encoder, config.dataset.dailytalk_dir, ".txt"), remove_columns="audio")
-    dataset.push_to_hub(config.dataset.name, "DailyTalk")
+    # data_files = {"train": glob.glob(os.path.join(config.dataset.dailytalk_dir, "**/*.wav"), recursive=True)}
+    # dataset = load_dataset("audiofolder", data_files=data_files, features=features)
+    # dataset = dataset.with_format("torch")
+    # dataset = dataset.map(get_tokenize_fn(encoder, config.dataset.dailytalk_dir, ".txt"), remove_columns="audio")
+    # dataset.push_to_hub(config.dataset.name, "DailyTalk")
 
 
 def get_tokenize_fn(encoder, data_dir, ext_txt: str = ".normalized.txt"):

@@ -1,12 +1,17 @@
+import os
+from pathlib import Path
+
 import fire
 from omegaconf import OmegaConf
 
 
 class TaskRunner:
     def tokenize(self, config: str = "configs/unit2speech/default.yaml"):
+        config = OmegaConf.load(config)
+        os.environ["HF_HOME"] = str(Path(config.dataset.HF_HOME).expanduser())
+
         from src.flow_matching.data import tokenize
 
-        config = OmegaConf.load(config)
         tokenize(config)
 
     def train_bigvgan(self, config: str = "configs/unit2speech/default.yaml"):
@@ -16,9 +21,11 @@ class TaskRunner:
         train_bigvgan(config)
 
     def train_flow_matching(self, config: str = "configs/unit2speech/default.yaml"):
+        config = OmegaConf.load(config)
+        os.environ["HF_HOME"] = str(Path(config.dataset.HF_HOME).expanduser())
+
         from src.flow_matching.train import train_flow_matching
 
-        config = OmegaConf.load(config)
         train_flow_matching(config)
 
     def evaluate(self, config: str = "configs/unit2speech/default.yaml"):
