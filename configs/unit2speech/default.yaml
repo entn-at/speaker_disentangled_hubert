@@ -34,8 +34,8 @@ flow_matching:
 
   model_args:
     vocab_size: 16384
-    dim_in: 80
-    dim_cond_emb: 768
+    num_mel_bins: 80
+    embedding_dim: 768
     hidden_size: 256
     num_hidden_layers: 4
     num_attention_heads: 2

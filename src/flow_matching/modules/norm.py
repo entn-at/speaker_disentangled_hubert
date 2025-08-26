@@ -22,8 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import torch
 import torch.nn.functional as F
-from einops import rearrange
 from torch import nn
 
 
@@ -35,10 +35,16 @@ class AdaptiveRMSNorm(nn.Module):
         self.to_weight = nn.Linear(hidden_size, hidden_size, bias=False)
         nn.init.zeros_(self.to_weight.weight)
 
-    def forward(self, x, time_embeddings):
-        if time_embeddings.ndim == 2:
-            time_embeddings = rearrange(time_embeddings, "b d -> b 1 d")
+    def forward(self, hidden_states: torch.FloatTensor, time_embeddings: torch.FloatTensor) -> torch.FloatTensor:
+        """
+        Args:
+            hidden_states (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
+                hidden states.
+            time_embeddings (`torch.FloatTensor` of shape `(batch_size, hidden_size)`):
+                condition for adaptive norm layers.
+        """
+        time_embeddings = time_embeddings.unsqueeze(1)
 
-        normed = F.normalize(x, dim=-1, eps=self.eps)
+        normed = F.normalize(hidden_states, dim=-1, eps=self.eps)
         gamma = self.to_weight(time_embeddings)
         return normed * self.scale * (gamma + 1.0)

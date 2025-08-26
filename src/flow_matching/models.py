@@ -140,17 +140,17 @@ class FlowMatchingModel(PreTrainedModel):
         super().__init__(config)
         self.time_cond_mlp = TimestepEmbedding(config.hidden_size)
         self.embed_tokens = (
-            nn.Embedding(config.vocab_size + 1, config.dim_cond_emb, padding_idx=config.vocab_size)
+            nn.Embedding(config.vocab_size + 1, config.embedding_dim, padding_idx=config.vocab_size)
             if embedding is None
             else embedding
         )
-        self.to_embed = nn.Linear(config.dim_in + config.dim_cond_emb, config.hidden_size)
+        self.to_embed = nn.Linear(config.num_mel_bins + config.embedding_dim, config.hidden_size)
 
         self.layers = nn.ModuleList([DiTLayer(config) for _ in range(config.num_hidden_layers)])
         self.norm = nn.RMSNorm(config.hidden_size)
         self.rotary_emb = Qwen3RotaryEmbedding(config)
 
-        self.to_pred = nn.Linear(config.hidden_size, config.dim_in, bias=False)
+        self.to_pred = nn.Linear(config.hidden_size, config.num_mel_bins, bias=False)
         self.duration_predictor = FlowMatchingDurationPredictor(config) if config.predict_duration else None
 
     def forward(
@@ -228,7 +228,7 @@ class FlowMatchingModel(PreTrainedModel):
                 Input sequence of text vectors.
 
         Returns:
-            x1 (`torch.FloatTensor` of shape `(batch_size, sequence_length, dim_in)`):
+            x1 (`torch.FloatTensor` of shape `(batch_size, sequence_length, num_mel_bins)`):
                 Synthesized log mel-spectrograms.
         """
         mask = input_ids.ne(self.config.vocab_size)
@@ -246,7 +246,7 @@ class FlowMatchingModel(PreTrainedModel):
             mask = torch.arange(0, lengths.max(), device=lengths.device).unsqueeze(0) < lengths
 
         bsz, seq_len, _ = inputs_embeds.shape
-        xt = torch.randn(bsz, seq_len, self.config.dim_in, device=inputs_embeds.device)
+        xt = torch.randn(bsz, seq_len, self.config.num_mel_bins, device=inputs_embeds.device)
         expand_mask = torch.cat([mask, mask])
 
         # rotary embeddings

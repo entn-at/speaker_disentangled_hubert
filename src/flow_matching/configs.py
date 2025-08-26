@@ -9,8 +9,8 @@ class FlowMatchingConfig(PretrainedConfig):
     def __init__(
         self,
         vocab_size: int = 16384,
-        dim_in: int = 80,
-        dim_cond_emb: int = 768,
+        num_mel_bins: int = 80,
+        embedding_dim: int = 768,
         hidden_size: int = 256,
         num_hidden_layers: int = 4,
         num_attention_heads: int = 2,
@@ -27,8 +27,8 @@ class FlowMatchingConfig(PretrainedConfig):
         **kwargs,
     ):
         self.vocab_size = vocab_size
-        self.dim_in = dim_in
-        self.dim_cond_emb = dim_cond_emb
+        self.num_mel_bins = num_mel_bins
+        self.embedding_dim = embedding_dim
         self.hidden_size = hidden_size
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads

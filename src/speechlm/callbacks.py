@@ -5,11 +5,12 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
+from datasets import DatasetDict
 from transformers import TrainerCallback
 
 
 class EvaluationCallback(TrainerCallback):
-    def __init__(self, eval_dataset: Dict):
+    def __init__(self, eval_dataset: Dict[str, DatasetDict]):
         self.eval_dataset = eval_dataset
 
     def get_evaluator(self, model, processing_class):

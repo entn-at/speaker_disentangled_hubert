@@ -77,7 +77,7 @@ class FlowMatchingDurationPredictor(nn.Module):
     def __init__(self, config: FlowMatchingConfig):
         super().__init__()
         self.log_domain_offset = 1.0
-        self.conv = nn.Conv1d(config.dim_cond_emb, 1, kernel_size=3, padding=1)
+        self.conv = nn.Conv1d(config.embedding_dim, 1, kernel_size=3, padding=1)
 
     def forward(self, hidden_states: torch.FloatTensor):
         """
