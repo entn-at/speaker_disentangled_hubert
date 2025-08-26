@@ -26,5 +26,5 @@ torch==2.5.1+cu121
 torchaudio==2.5.1+cu121
 torchdiffeq
 torchode
-transformers==4.55.3
+transformers==4.55.4
 vector_quantize_pytorch

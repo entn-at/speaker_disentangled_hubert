@@ -126,11 +126,7 @@ def _syllable_segmentation(config):
             LibriSpeech(root=config.dataset.root, url="test-other", max_sample_size=None, perturb=False),
         ]
     )
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=config.dataloader.batch_size,
-        collate_fn=LibriSpeech.collate_fn,
-    )
+    dataloader = torch.utils.data.DataLoader(dataset, collate_fn=LibriSpeech.collate_fn)
 
     segment_dir = Path(config.path.segment_dir)
 

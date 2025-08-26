@@ -23,14 +23,14 @@ sh scripts/setup.sh
 
 ## Usage: encoding waveforms into pseudo-syllabic units
 
-![](figures/usage.png)
+![](docs/figures/usage.png)
 
 ```python
 import re
 
 import torch
 import torchaudio
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, PreTrainedTokenizerFast
 
 from src.flow_matching import FlowMatchingWithBigVGan
 from src.s5hubert import S5HubertForSyllableDiscovery
@@ -41,7 +41,7 @@ wav_path = "/path/to/wav"
 encoder = S5HubertForSyllableDiscovery.from_pretrained("ryota-komatsu/s5-hubert", device_map="cuda")
 decoder = FlowMatchingWithBigVGan.from_pretrained("ryota-komatsu/s5-hubert-decoder", device_map="cuda")
 speechlm = AutoModelForCausalLM.from_pretrained("/path/to/speechLM", device_map="cuda")
-tokenizer = AutoTokenizer.from_pretrained("/path/to/speechLM")
+tokenizer = PreTrainedTokenizerFast.from_pretrained("/path/to/speechLM")
 
 # load a waveform
 waveform, sr = torchaudio.load(wav_path)
@@ -69,7 +69,7 @@ generated_speech = decoder(units.unsqueeze(0))[0].cpu()
 
 ## Models
 
-![](figures/model.png)
+![](docs/figures/model.png)
 
 You can download a pretrained model from [Hugging Face](https://huggingface.co/ryota-komatsu/s5-hubert).
 
