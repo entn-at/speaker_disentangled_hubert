@@ -20,7 +20,6 @@ from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 from torch import nn
-from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoModel
 from transformers.modeling_outputs import SequenceClassifierOutput
 from transformers.models.hubert.modeling_hubert import HubertModel, HubertPreTrainedModel
@@ -266,7 +265,7 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
         merge_threshold: Optional[float] = 0.6,
         min_duration: int = 3,
         max_duration: int = 35,
-        max_chunk: int = 400080,
+        max_chunk: int = 320080,
         min_chunk: int = 4880,
     ):
         """

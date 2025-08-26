@@ -34,14 +34,7 @@ def train(config):
     }
 
     # Model
-    model = Qwen3ForCausalLM(
-        Qwen3ForSpeechLMConfig(
-            vocab_size=config.speech2unit.vocab_size + 2,
-            pad_token_id=config.speech2unit.vocab_size + 1,
-            bos_token_id=config.speech2unit.vocab_size,
-            eos_token_id=config.speech2unit.vocab_size + 1,
-        )
-    )
+    model = Qwen3ForCausalLM(Qwen3ForSpeechLMConfig(**OmegaConf.to_container(config.model_args)))
     # model = AutoModelForCausalLM.from_pretrained(config.model.name)
     # model.resize_token_embeddings(len(tokenizer), mean_resizing=config.model.mean_resizing)
     # model.requires_grad_(False)

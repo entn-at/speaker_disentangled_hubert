@@ -65,7 +65,7 @@ class EvaluationCallback(TrainerCallback):
         hyps = []
 
         for batch in self.dataloader:
-            spectrogram = model.synthesize(batch["input_ids"].to(model.device))
+            spectrogram = model.sample(batch["input_ids"].to(model.device))
             hyp_wav = self.vocoder(spectrogram)
             hyp_wav = hyp_wav.cpu().squeeze(0).numpy()
             hyp = self.pipe(hyp_wav, generate_kwargs={"language": "english"}, return_timestamps=True)["text"]

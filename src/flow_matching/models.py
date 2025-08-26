@@ -221,7 +221,7 @@ class FlowMatchingModel(PreTrainedModel):
         return ModelOutput(loss=loss)
 
     @torch.inference_mode()
-    def synthesize(self, input_ids: torch.LongTensor) -> torch.FloatTensor:
+    def sample(self, input_ids: torch.LongTensor) -> torch.FloatTensor:
         """
         Args:
             input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
@@ -328,7 +328,7 @@ class FlowMatchingWithBigVGan(PreTrainedModel):
             waveform (`list` of `torch.FloatTensor` of shape `(1, (sequence_length - 1) * 320 + 400)`):
                 Synthesized waveforms.
         """
-        spectrogram = self.model.synthesize(input_ids)
+        spectrogram = self.model.sample(input_ids)
 
         pad_value = dynamic_range_compression_torch(torch.tensor(0))
         mask = spectrogram.ne(pad_value).all(dim=2)
