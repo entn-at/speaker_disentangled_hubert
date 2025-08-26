@@ -89,7 +89,7 @@ class Attention(nn.Module):
         return self.o_proj(attn_output)
 
 
-class TransformerLayer(nn.Module):
+class DiTLayer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.self_attn = Attention(config)
@@ -146,7 +146,7 @@ class FlowMatchingModel(PreTrainedModel):
         )
         self.to_embed = nn.Linear(config.dim_in + config.dim_cond_emb, config.hidden_size)
 
-        self.layers = nn.ModuleList([TransformerLayer(config) for _ in range(config.num_hidden_layers)])
+        self.layers = nn.ModuleList([DiTLayer(config) for _ in range(config.num_hidden_layers)])
         self.norm = nn.RMSNorm(config.hidden_size)
         self.rotary_emb = Qwen3RotaryEmbedding(config)
 

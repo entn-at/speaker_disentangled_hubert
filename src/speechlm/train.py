@@ -2,10 +2,10 @@ import numpy as np
 import torch
 from datasets import load_dataset
 from omegaconf import OmegaConf
-from transformers import AutoModelForCausalLM, AutoTokenizer, OPTForCausalLM, Trainer, TrainingArguments
+from transformers import AutoModelForCausalLM, AutoTokenizer, Qwen3ForCausalLM, Trainer, TrainingArguments
 
 from .callbacks import DefrostCallback, EvaluationCallback
-from .configs import OPTForSpeechLMConfig
+from .configs import Qwen3ForSpeechLMConfig
 from .data import get_collator
 from .tokenizer import SpeechLMTokenizerFast
 
@@ -34,7 +34,14 @@ def train(config):
     }
 
     # Model
-    model = OPTForCausalLM(OPTForSpeechLMConfig())
+    model = Qwen3ForCausalLM(
+        Qwen3ForSpeechLMConfig(
+            vocab_size=config.speech2unit.vocab_size + 2,
+            pad_token_id=config.speech2unit.vocab_size + 1,
+            bos_token_id=config.speech2unit.vocab_size,
+            eos_token_id=config.speech2unit.vocab_size + 1,
+        )
+    )
     # model = AutoModelForCausalLM.from_pretrained(config.model.name)
     # model.resize_token_embeddings(len(tokenizer), mean_resizing=config.model.mean_resizing)
     # model.requires_grad_(False)

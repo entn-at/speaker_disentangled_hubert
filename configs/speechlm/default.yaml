@@ -18,9 +18,9 @@ model:
 
 training_args:
   output_dir: "models/speechlm"
-  per_device_train_batch_size: 8
-  per_device_eval_batch_size: 32
-  gradient_accumulation_steps: 8
+  per_device_train_batch_size: 256
+  per_device_eval_batch_size: 256
+  gradient_accumulation_steps: 4
   learning_rate: 0.0005
   weight_decay: 0.01
   adam_beta1: 0.9
@@ -40,5 +40,4 @@ training_args:
 
 speech2unit:
   model_name_or_path: "ryota-komatsu/s5-hubert"
-  batch_size: 4   # work with a single 24GB VRAM GPU
   vocab_size: 16384

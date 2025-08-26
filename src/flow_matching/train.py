@@ -89,10 +89,8 @@ class EvaluationCallback(TrainerCallback):
 def train_flow_matching(config):
     train_dataset = concatenate_datasets(
         [
-            # load_dataset(config.dataset.name, "LibriTTS-R", split="train", keep_in_memory=True),
-            # load_dataset(config.dataset.name, "Hi-Fi-CAPTAIN", split="train", keep_in_memory=True),
-            # load_dataset(config.dataset.name, "DailyTalk", split="train", keep_in_memory=True),
-            load_dataset(config.dataset.name, "hifitts", split="train", keep_in_memory=True),
+            load_dataset(config.dataset.name, "LibriTTS-R", split="train", keep_in_memory=True),
+            # load_dataset(config.dataset.name, "Hi-Fi-CAPTAIN", split="female", keep_in_memory=True),
         ]
     )
     eval_dataset = load_dataset(config.dataset.name, "LibriTTS-R", split="dev", keep_in_memory=True)

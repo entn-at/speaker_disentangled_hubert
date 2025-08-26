@@ -17,9 +17,7 @@ from tqdm import tqdm
 from .utils import normalize_text
 
 
-def get_collator(
-    tokenizer,
-):
+def get_collator(tokenizer):
     def collator(batch) -> Dict[str, Any]:
         inputs = ["".join(f"<{unit}>" for unit in item["units"]) + tokenizer.eos_token for item in batch]
         inputs = tokenizer(inputs, padding=True, return_tensors="pt")
