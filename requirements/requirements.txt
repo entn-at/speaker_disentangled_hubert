@@ -9,7 +9,7 @@ fire
 gateloop_transformer
 gradio
 ipykernel==6.29.5
-jiwer @ git+https://github.com/jitsi/jiwer.git@c1b0d5e005431f5ce4fa6797f48639a8ccaa5042
+jiwer==4.0.0
 joblib==1.4.0
 librosa
 lightning==2.5.2
@@ -26,5 +26,5 @@ torch==2.5.1+cu121
 torchaudio==2.5.1+cu121
 torchdiffeq
 torchode
-transformers==4.55.4
+transformers==4.56.1
 vector_quantize_pytorch

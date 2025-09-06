@@ -59,11 +59,11 @@ def evaluate(config):
     encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path, device_map="cuda")
     decoder = FlowMatchingWithBigVGan.from_pretrained(config.unit2speech.model_name_or_path, device_map="cuda")
 
-    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
     asr = AutoModelForSpeechSeq2Seq.from_pretrained(
         config.asr.model_name_or_path,
-        torch_dtype=torch_dtype,
+        dtype=dtype,
         low_cpu_mem_usage=True,
         use_safetensors=True,
         device_map="cuda",
@@ -74,7 +74,7 @@ def evaluate(config):
         model=asr,
         tokenizer=processor.tokenizer,
         feature_extractor=processor.feature_extractor,
-        torch_dtype=torch_dtype,
+        dtype=dtype,
     )
 
     scorer = Score(ckpt_path="src/utmos/epoch=3-step=7459.ckpt", input_sample_rate=16000, device="cuda")

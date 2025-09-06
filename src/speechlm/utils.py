@@ -1,26 +1,29 @@
 import re
 
+from transformers.models.whisper.english_normalizer import ADDITIONAL_DIACRITICS
+
+vocab = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'\",.?! ;:()[]—_" + "".join(ADDITIONAL_DIACRITICS)
+pattern = f"[^{re.escape(vocab)}]"
+
 
 def normalize_text(s: str) -> str:
     s = s.replace("‘", "'")
     s = s.replace("’", "'")
-    tokens = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',.?")
-    s_list = [x if x in tokens else " " for x in s]
+    tokens = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',.?")
+    s_list = [x if x in tokens else ADDITIONAL_DIACRITICS[x] if x in ADDITIONAL_DIACRITICS else " " for x in s]
     s = " ".join("".join(s_list).split()).strip()
 
-    s = s.lower()
-
-    s = re.sub(r"\ban'\s", "and ", s)
     s = re.sub(r"\baround'em\b", "around them", s)
+    s = re.sub(r"\bb'lieve\b", "believe", s)
     s = re.sub(r"\bbewilder'd\b", "bewildered", s)
     s = re.sub(r"\bcap'n\b", "captain", s)
+    s = re.sub(r"\bCap'n\b", "Captain", s)
     s = re.sub(r"\bcharm'em\b", "charm them", s)
     s = re.sub(r"\bdiff'rence\b", "difference", s)
     s = re.sub(r"\be'en\b", "even", s)
     s = re.sub(r"\bfetchin'\s", "fetching ", s)
     s = re.sub(r"\bgive'em\b", "give them", s)
     s = re.sub(r"\binv'tation", "invitation", s)
-    s = re.sub(r"\bjes'\s", "just ", s)
     s = re.sub(r"\bmore'n\b", "more than", s)
     s = re.sub(r"\bof'em\b", "of them", s)
     s = re.sub(r"\bop'ning\b", "opening", s)
@@ -32,9 +35,7 @@ def normalize_text(s: str) -> str:
     s = re.sub(r"\bvisitin'\s", "visiting ", s)
     s = re.sub(r"\bwith'em\b", "with them", s)
 
-    s = s.capitalize()
-
-    s = re.sub(r"\bi\b", "I", s)
-    s = re.sub(r"\b '\b", "'", s)
+    s = re.sub(r"\s\?", "?", s)
+    s = re.sub(r"\s,", ",", s)
 
     return s

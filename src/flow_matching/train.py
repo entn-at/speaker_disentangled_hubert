@@ -35,12 +35,12 @@ class EvaluationCallback(TrainerCallback):
         eval_dataset,
         data_collator,
     ):
-        torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+        dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
         self.vocoder = AutoModel.from_pretrained(vocoder_model_name_or_path, device_map="cuda")
         asr = AutoModelForSpeechSeq2Seq.from_pretrained(
             asr_model_name_or_path,
-            torch_dtype=torch_dtype,
+            dtype=dtype,
             low_cpu_mem_usage=True,
             use_safetensors=True,
             device_map="cuda",
@@ -51,7 +51,7 @@ class EvaluationCallback(TrainerCallback):
             model=asr,
             tokenizer=self.processor.tokenizer,
             feature_extractor=self.processor.feature_extractor,
-            torch_dtype=torch_dtype,
+            dtype=dtype,
         )
 
         self.dataloader = torch.utils.data.DataLoader(eval_dataset, collate_fn=data_collator)

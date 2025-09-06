@@ -193,7 +193,12 @@ def merge_train(config):
 def _tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
     from ..s5hubert import S5HubertForSyllableDiscovery
 
-    dataset = load_dataset(config.dataset.train, split="train")
+    data_files = [
+        os.path.join(config.dataset.lh_dir, "libriheavy_cuts_small.jsonl.gz"),
+        os.path.join(config.dataset.lh_dir, "libriheavy_cuts_medium.jsonl.gz"),
+        os.path.join(config.dataset.lh_dir, "libriheavy_cuts_large.jsonl.gz"),
+    ]
+    dataset = load_dataset("json", data_files=data_files, split="train")
     dataset = dataset.shard(num_shards=num_shards, index=shard_index)
 
     encoder = S5HubertForSyllableDiscovery.from_pretrained(config.speech2unit.model_name_or_path, device_map="cuda")
@@ -216,58 +221,64 @@ def _tokenize_train(config, num_shards: int = 1, shard_index: int = 0):
             text = example["supervisions"][0]["custom"]["texts"][0]
             text = normalize_text(text)
 
-            manifest = {
+            example = {
                 "audio_filepath": save_path,
                 "text": text,
                 "id": example["id"],
                 "units": outputs[0]["units"].tolist(),
                 "durations": outputs[0]["durations"].tolist(),
+                "intermediate_units": outputs[0]["intermediate_units"].tolist(),
             }
-            f.write(json.dumps(manifest) + "\n")
+            json.dump(example, f)
+            f.write("\n")
 
 
-def align_train(config, num_shards: int = 1):
-    data_files = [f"{config.dataset.manifest_prefix}{shard_index}.json" for shard_index in range(num_shards)]
-    dataset = load_dataset("json", data_files=data_files, split="train")
-
+def align_text(config, shard_index: int = 0):
     id_to_aligned_text = dict()
 
-    for shard_index in range(num_shards):
-        manifest_prefix = Path(config.dataset.manifest_prefix).stem
-        manifest_with_output_file_paths = os.path.join(
-            config.dataset.lh_dir, f"shard{shard_index}/{manifest_prefix}{shard_index}_with_output_file_paths.json"
-        )
+    manifest_prefix = Path(config.dataset.manifest_prefix).stem
+    manifest_with_output_file_paths = os.path.join(
+        config.dataset.lh_dir, f"shard{shard_index}/{manifest_prefix}{shard_index}_with_output_file_paths.json"
+    )
 
-        with open(manifest_with_output_file_paths) as f:
-            for example in f:
-                example = json.loads(example.strip())
+    with open(manifest_with_output_file_paths) as f:
+        for example in f:
+            example = json.loads(example.strip())
 
-                id_ = str(Path(example["audio_filepath"]).relative_to(config.dataset.lh_dir).with_suffix(""))
-                aligned_text = []
+            id_ = str(Path(example["audio_filepath"]).relative_to(config.dataset.lh_dir).with_suffix(""))
+            aligned_text = []
 
-                if "words_level_ctm_filepath" in example:
-                    with open(example["words_level_ctm_filepath"]) as g:
-                        for line in g:
-                            _, _, start, duration, word, _, _, _ = line.split(" ")
+            if "words_level_ctm_filepath" in example:
+                with open(example["words_level_ctm_filepath"]) as g:
+                    for line in g:
+                        _, _, start, duration, word, _, _, _ = line.split(" ")
 
-                            aligned_text.append(
-                                {
-                                    "start_time": float(start),
-                                    "end_time": float(start) + float(duration),
-                                    "word": " " + word,
-                                }
-                            )
+                        aligned_text.append(
+                            {
+                                "start_time": float(start),
+                                "end_time": round(float(start) + float(duration), 2),
+                                "word": " " + word,
+                            }
+                        )
 
-                id_to_aligned_text[id_] = aligned_text
+            id_to_aligned_text[id_] = aligned_text
 
-    def add_aligned_units(example):
-        example["aligned_text"] = id_to_aligned_text[example["id"]]
+    with open(f"data/id_to_aligned_text{shard_index}.json", "w") as f:
+        json.dump(id_to_aligned_text, f)
+
+
+def align_units(config, num_shards_text: int = 1, num_shards_units: int = 1):
+    id_to_aligned_text = dict()
+
+    for shard_index in tqdm(range(num_shards_text)):
+        with open(f"data/id_to_aligned_text{shard_index}.json") as f:
+            id_to_aligned_text.update(json.load(f))
+
+    def add_aligned_units(example: Dict[str, Any]) -> Dict[str, Any]:
+        example["aligned_text"] = id_to_aligned_text.get(example["id"], [])
 
         if not example["aligned_text"]:
-            end_time = sum(example["durations"]) * 0.02
-            example["aligned_units"] = [
-                {"start_time": 0.0, "end_time": end_time, "units": example["units"], "text": example["text"]}
-            ]
+            example["aligned_units"] = []
             return example
 
         unit_timestamps = np.cumsum(example["durations"]) * 0.02
@@ -301,6 +312,19 @@ def align_train(config, num_shards: int = 1):
 
         return example
 
-    dataset = dataset.map(add_aligned_units, remove_columns="audio_filepath")
+    for shard_index in range(num_shards_units):
+        data_files = [f"{config.dataset.manifest_prefix}{shard_index}.json"]
+        dataset = load_dataset("json", data_files=data_files, split="train")
+
+        with open(f"{config.dataset.manifest_prefix}_with_alignment{shard_index}.json", "w") as f:
+            for example in tqdm(dataset):
+                example = add_aligned_units(example)
+                json.dump(example, f)
+                f.write("\n")
+
+    data_files = [
+        f"{config.dataset.manifest_prefix}_with_alignment{shard_index}.json" for shard_index in range(num_shards_units)
+    ]
+    dataset = load_dataset("json", data_files=data_files, split="train")
     dataset = DatasetDict({"train": dataset})
     dataset.push_to_hub(config.dataset.name, "Libri-Light")
