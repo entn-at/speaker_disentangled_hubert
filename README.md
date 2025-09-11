@@ -83,6 +83,7 @@ sh scripts/download_librispeech.sh ${dataset_root}
 sh scripts/download_libritts.sh ${dataset_root}
 sh scripts/download_librilight.sh ${dataset_root}  # 7TB
 sh scripts/download_slm21.sh  # download sWUGGY and sBLIMP
+sh scripts/download_tSC.sh
 ```
 
 > [!TIP]

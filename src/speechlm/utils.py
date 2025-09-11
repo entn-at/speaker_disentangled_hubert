@@ -10,7 +10,7 @@ def normalize_text(s: str) -> str:
     s = s.replace("‘", "'")
     s = s.replace("’", "'")
     tokens = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',.?")
-    s_list = [x if x in tokens else ADDITIONAL_DIACRITICS[x] if x in ADDITIONAL_DIACRITICS else " " for x in s]
+    s_list = [x if x in tokens else ADDITIONAL_DIACRITICS.get(x, " ") for x in s]
     s = " ".join("".join(s_list).split()).strip()
 
     s = re.sub(r"\baround'em\b", "around them", s)

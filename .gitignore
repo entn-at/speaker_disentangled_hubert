@@ -1,5 +1,6 @@
 .vscode
 __pycache__
+src/NeMo
 src/sdhubert
 src/sylber
 src/SyllableLM

@@ -116,4 +116,5 @@ class DefrostCallback(TrainerCallback):
         if state.global_step == self.defrost_steps:
             self.handle_input_embeddings.remove()
             self.handle_output_embeddings.remove()
-            model.requires_grad_(True)
+            model.model.layers.requires_grad_(True)
+            model.model.norm.requires_grad_(True)
