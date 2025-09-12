@@ -18,7 +18,6 @@
 from typing import Optional
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from ..configs import FlowMatchingConfig
@@ -33,13 +32,13 @@ class MLP(nn.Module):
     def __init__(self, config, kernel_size: int = 3):
         super().__init__()
         self.gate_proj = nn.Conv1d(
-            config.hidden_size, config.intermediate_size, kernel_size, padding=(kernel_size - 1) // 2
+            config.hidden_size, config.intermediate_size, kernel_size, padding=(kernel_size - 1) // 2, bias=False
         )
         self.up_proj = nn.Conv1d(
-            config.hidden_size, config.intermediate_size, kernel_size, padding=(kernel_size - 1) // 2
+            config.hidden_size, config.intermediate_size, kernel_size, padding=(kernel_size - 1) // 2, bias=False
         )
         self.down_proj = nn.Conv1d(
-            config.intermediate_size, config.hidden_size, kernel_size, padding=(kernel_size - 1) // 2
+            config.intermediate_size, config.hidden_size, kernel_size, padding=(kernel_size - 1) // 2, bias=False
         )
         self.act_fn = nn.SiLU()
 

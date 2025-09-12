@@ -5,7 +5,7 @@
 [![colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ryota-komatsu/speaker_disentangled_hubert/blob/main/demo.ipynb)
 [![arXiv](https://img.shields.io/badge/arXiv-2409.10103-<COLOR>.svg?logo=arXiv)](https://arxiv.org/abs/2409.10103)
 [![model](https://img.shields.io/badge/%F0%9F%A4%97-Model-blue)](https://huggingface.co/collections/ryota-komatsu/speaker-disentangled-hubert-686dc45a8718d505aa696f76)
-[![demo](https://img.shields.io/badge/Demo-blue)](https://ryota-komatsu.github.io/speaker_disentangled_hubert)
+[![demo](https://img.shields.io/badge/Project-Page-blue)](https://ryota-komatsu.github.io/speaker_disentangled_hubert)
 
 This is the official repository of the IEEE SLT 2024 paper [Self-Supervised Syllable Discovery Based on Speaker-Disentangled HuBERT](https://arxiv.org/abs/2409.10103).
 
@@ -39,7 +39,7 @@ wav_path = "/path/to/wav"
 
 # download pretrained models from hugging face hub
 encoder = S5HubertForSyllableDiscovery.from_pretrained("ryota-komatsu/s5-hubert", device_map="cuda")
-decoder = FlowMatchingWithBigVGan.from_pretrained("ryota-komatsu/s5-hubert-decoder", device_map="cuda")
+decoder = FlowMatchingWithBigVGan.from_pretrained("ryota-komatsu/s5-hubert-decoder-ft", device_map="cuda")
 speechlm = AutoModelForCausalLM.from_pretrained("/path/to/speechLM", device_map="cuda")
 tokenizer = PreTrainedTokenizerFast.from_pretrained("/path/to/speechLM")
 
@@ -122,7 +122,7 @@ python main_speech2unit.py train --config configs/speech2unit/default.yaml
 ## Unit-to-speech synthesis
 
 ```shell
-python main_unit2speech.py train_flow_matching --config=configs/unit2speech/default.yaml
+python main_unit2speech.py train_dit --config=configs/unit2speech/default.yaml
 ```
 
 ## Speech language modeling

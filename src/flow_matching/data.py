@@ -59,7 +59,6 @@ def tokenize(config):
     # Hi-Fi-CAPTAIN
     data_files = {
         "female": glob.glob(os.path.join(config.dataset.hfc_dir, "female/**/*.wav"), recursive=True),
-        "male": glob.glob(os.path.join(config.dataset.hfc_dir, "male/**/*.wav"), recursive=True),
     }
     dataset = load_dataset("audiofolder", data_files=data_files, features=features)
     dataset = dataset.map(get_tokenize_fn(encoder, config.dataset.hfc_dir, ""), remove_columns="audio")

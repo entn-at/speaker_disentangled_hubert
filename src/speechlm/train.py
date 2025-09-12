@@ -1,7 +1,7 @@
 import deepspeed
 import numpy as np
 import torch
-from datasets import load_dataset
+from datasets import interleave_datasets, load_dataset
 from deepspeed.utils.tensor_fragment import fragment_address
 from omegaconf import OmegaConf
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
@@ -36,6 +36,11 @@ def train(config):
 
     # Datasets
     train_dataset = load_dataset(config.dataset.name, "Libri-Light", split="train", keep_in_memory=True)
+    train_dataset = interleave_datasets(
+        [train_dataset, train_dataset.remove_columns("aligned_units")],
+        probabilities=[0.8, 0.2],
+        stopping_strategy="all_exhausted",
+    )
     eval_dataset = {
         "sWUGGY": load_dataset(config.dataset.name, "sWUGGY"),
         "sBLIMP": load_dataset(config.dataset.name, "sBLIMP"),

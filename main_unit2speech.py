@@ -20,13 +20,21 @@ class TaskRunner:
         config = OmegaConf.load(config)
         train_bigvgan(config)
 
-    def train_flow_matching(self, config: str = "configs/unit2speech/default.yaml"):
+    def train_dit(self, config: str = "configs/unit2speech/default.yaml"):
         config = OmegaConf.load(config)
         os.environ["HF_HOME"] = str(Path(config.dataset.HF_HOME).expanduser())
 
-        from src.flow_matching.train import train_flow_matching
+        from src.flow_matching.train import train_dit
 
-        train_flow_matching(config)
+        train_dit(config)
+
+    def finetune_dit(self, config: str = "configs/unit2speech/default.yaml"):
+        config = OmegaConf.load(config)
+        os.environ["HF_HOME"] = str(Path(config.dataset.HF_HOME).expanduser())
+
+        from src.flow_matching.train import finetune_dit
+
+        finetune_dit(config)
 
     def evaluate(self, config: str = "configs/unit2speech/default.yaml"):
         from src.flow_matching.eval import evaluate

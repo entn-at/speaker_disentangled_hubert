@@ -15,7 +15,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # download pretrained models from hugging face hub
 encoder = S5HubertForSyllableDiscovery.from_pretrained("ryota-komatsu/s5-hubert", device_map=device)
-decoder = FlowMatchingWithBigVGan.from_pretrained("ryota-komatsu/s5-hubert-decoder", device_map=device)
+decoder = FlowMatchingWithBigVGan.from_pretrained("ryota-komatsu/s5-hubert-decoder-ft", device_map=device)
 
 
 def synthesize(audio: str) -> Tuple[int, np.ndarray]:

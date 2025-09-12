@@ -3,7 +3,7 @@ from pathlib import Path
 import jiwer
 import pandas as pd
 import torch
-from datasets import concatenate_datasets, load_dataset
+from datasets import load_dataset
 from omegaconf import OmegaConf
 from transformers import (
     AutoConfig,
@@ -86,13 +86,8 @@ class EvaluationCallback(TrainerCallback):
         model.train()
 
 
-def train_flow_matching(config):
-    train_dataset = concatenate_datasets(
-        [
-            load_dataset(config.dataset.name, "LibriTTS-R", split="train", keep_in_memory=True),
-            # load_dataset(config.dataset.name, "Hi-Fi-CAPTAIN", split="female", keep_in_memory=True),
-        ]
-    )
+def train_dit(config):
+    train_dataset = load_dataset(config.dataset.name, "LibriTTS-R", split="train", keep_in_memory=True)
     eval_dataset = load_dataset(config.dataset.name, "LibriTTS-R", split="dev", keep_in_memory=True)
 
     train_dataset = train_dataset.with_format("torch")
@@ -120,3 +115,20 @@ def train_flow_matching(config):
         ],
     )
     trainer.train(resume_from_checkpoint=config.flow_matching.training_args.resume_from_checkpoint)
+
+
+def finetune_dit(config):
+    train_dataset = load_dataset(config.dataset.name, "Hi-Fi-CAPTAIN", split="female", keep_in_memory=True)
+    train_dataset = train_dataset.with_format("torch")
+
+    model = FlowMatchingModel.from_pretrained(config.flow_matching.finetuning_args.resume_from_checkpoint)
+
+    training_args = TrainingArguments(**OmegaConf.to_container(config.flow_matching.finetuning_args))
+
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        data_collator=get_collate_fn(config.flow_matching.model_args.vocab_size),
+    )
+    trainer.train()
