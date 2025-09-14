@@ -174,13 +174,7 @@ class S5Hubert(nn.Module):
 
         for layer in self.student.encoder.layers:
             all_hidden_states = all_hidden_states + (hidden_states,)
-
-            # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
-            dropout_probability = torch.rand([])
-
-            skip_the_layer = True if self.training and (dropout_probability < self.student.config.layerdrop) else False
-            if not skip_the_layer:
-                hidden_states = layer(hidden_states, attention_mask=attention_mask)[0]
+            hidden_states = layer(hidden_states, attention_mask=attention_mask)[0]
 
         all_hidden_states = all_hidden_states + (hidden_states,)
 
