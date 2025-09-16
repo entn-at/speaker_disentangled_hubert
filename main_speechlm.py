@@ -36,6 +36,14 @@ class TaskRunner:
 
         train(config)
 
+    def evaluate(self, config: str = "configs/speechlm/default.yaml"):
+        config = OmegaConf.load(config)
+        os.environ["HF_HOME"] = str(Path(config.dataset.HF_HOME).expanduser())
+
+        from src.speechlm.eval import evaluate
+
+        evaluate(config)
+
 
 if __name__ == "__main__":
     fire.Fire(TaskRunner)

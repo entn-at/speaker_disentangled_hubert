@@ -402,6 +402,17 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
             # Agglomerative clustering on K-means centroids
             units = self.quantizer2[intermediate_units]
 
+            # deduplicate
+            diff = units[1:] != units[:-1]
+            start_mask = torch.cat([torch.tensor([True], device=units.device), diff])
+            end_mask = torch.cat([diff, torch.tensor([True], device=units.device)])
+
+            intermediate_units = intermediate_units[start_mask]
+            units = units[start_mask]
+            frame_boundary = torch.stack([frame_boundary[:, 0][start_mask], frame_boundary[:, 1][end_mask]], dim=1)
+            segments = frame_boundary * self.sec_per_frame
+            segment_features = torch.stack([dense[l:r].mean(0) for l, r in frame_boundary])
+
             durations = frame_boundary[:, 1] - frame_boundary[:, 0]
 
             if not self.deduplicate:
