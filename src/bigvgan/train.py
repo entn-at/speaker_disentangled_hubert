@@ -84,12 +84,16 @@ def train(rank, config):
         mrd = DistributedDataParallel(mrd, device_ids=[rank]).to(device)
 
     optim_g = torch.optim.AdamW(
-        generator.parameters(), config.vocoder.learning_rate, betas=[config.vocoder.adam_b1, config.vocoder.adam_b2]
+        generator.parameters(),
+        config.vocoder.learning_rate,
+        betas=[config.vocoder.adam_b1, config.vocoder.adam_b2],
+        fused=True,
     )
     optim_d = torch.optim.AdamW(
         itertools.chain(mrd.parameters(), mpd.parameters()),
         config.vocoder.learning_rate,
         betas=[config.vocoder.adam_b1, config.vocoder.adam_b2],
+        fused=True,
     )
 
     scheduler_g = torch.optim.lr_scheduler.ExponentialLR(optim_g, gamma=config.vocoder.lr_decay)

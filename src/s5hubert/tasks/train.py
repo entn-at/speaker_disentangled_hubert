@@ -1,130 +1,129 @@
+import json
 from pathlib import Path
 
 import numpy as np
 import torch
 import torchaudio
-from torch.utils.data import ConcatDataset
-from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm
+from omegaconf import OmegaConf
+from transformers import Trainer, TrainerCallback, TrainingArguments
 
 from ...sdhubert.utils.syllable import BoundaryDetectionEvaluator
 from ..models.s5hubert import S5Hubert
 from ..models.s5hubert_dino import S5HubertDino
-from ..utils.data import LibriSpeech
+from ..utils.data import LibriLight
 from ..utils.mincut import parallel_mincut
-from ..utils.misc import fix_random_seed, get_tri_stage_schedule
 
 
-@torch.inference_mode()
-def validate(config, model, writer: SummaryWriter, step: int):
-    model.eval()
-    torch.cuda.empty_cache()
+class EMACallback(TrainerCallback):
+    def on_step_end(self, args, state, control, model, **kwargs):
+        model.update_teacher()
 
-    wav_dir = Path(config.dataset.root) / "LibriSpeech"
-    segment_dir = Path(config.path.segment_dir)
-    segment_paths = []
 
-    total_seconds = 0
+class DefrostCallback(TrainerCallback):
+    def on_train_begin(self, args, state, control, model, **kwargs):
+        if state.global_step < args.warmup_steps:
+            model.freeze_pretrained_modules()
 
-    with open(config.dataset.dev_file) as f:
-        for n, wav_name in enumerate(f):
-            wav_name = wav_name.rstrip()
-            wav_path = wav_dir / wav_name
-            wav_path = str(wav_path)  # for sox backend
-            wav, sr = torchaudio.load(wav_path)
-            wav = wav.cuda()
+    def on_step_end(self, args, state, control, model, **kwargs):
+        if state.global_step == args.warmup_steps:
+            model.defrost_transformer_encoder()
 
-            hidden_states, _ = model.student_forward(wav)
-            hidden_states = hidden_states[config.model.segmentation_layer].squeeze(0).cpu().numpy()
-            outputs = {"hidden_states": hidden_states}
 
-            # save hidden states
-            segment_name = wav_name.replace(".flac", ".npy")
-            segment_path = segment_dir / segment_name
-            segment_path.parent.mkdir(parents=True, exist_ok=True)
-            segment_paths.append(segment_path)
-            np.save(segment_path, outputs)
+class SavingCallback(TrainerCallback):
+    def on_train_end(self, args, state, control, model, **kwargs):
+        if state.is_world_process_zero:
+            model.student.save_pretrained(args.output_dir)
 
-            total_seconds += wav.shape[1] / sr
 
-            if n < 10:
-                similarity_mat = hidden_states @ hidden_states.T
-                min_value = np.min(similarity_mat)
-                max_value = np.max(similarity_mat)
-                similarity_mat = (similarity_mat - min_value) / (max_value - min_value)
-                writer.add_image(f"dev/{n}", similarity_mat, step, dataformats="HW")
+class EvaluationCallback(TrainerCallback):
+    def __init__(self, config):
+        self.config = config
 
-    parallel_mincut(
-        segment_paths,
-        config.common.disable_tqdm,
-        config.mincut.sec_per_frame,
-        config.mincut.sec_per_syllable,
-        config.mincut.merge_threshold,
-        config.mincut.min_duration,
-        config.mincut.max_duration,
-        config.mincut.num_workers,
-    )
+    @torch.inference_mode()
+    def on_step_end(self, args, state, control, model, **kwargs):
+        if state.global_step % args.eval_steps != 0 or not state.is_world_process_zero:
+            return
 
-    results = BoundaryDetectionEvaluator(
-        config.path.segment_dir,
-        config.dataset.dev_alignment,
-        config.dataset.dev_alignment,
-        tolerance=0.05,
-        max_val_num=None,
-    ).evaluate()
+        model.eval()
+        torch.cuda.empty_cache()
 
-    # calculate the unit frequency
-    num_units = 0
+        wav_dir = Path(self.config.dataset.root) / "LibriSpeech"
+        segment_dir = Path(self.config.path.segment_dir)
+        segment_paths = []
 
-    for segment_path in segment_paths:
-        ckpt = np.load(segment_path, allow_pickle=True)[()]
-        num_units += len(ckpt["segments"])
+        total_seconds = 0
 
-    results["unit_frequency"] = num_units / total_seconds
+        with open(self.config.dataset.dev_file) as f:
+            for n, wav_name in enumerate(f):
+                wav_name = wav_name.rstrip()
+                wav_path = wav_dir / wav_name
+                wav_path = str(wav_path)  # for sox backend
+                wav, sr = torchaudio.load(wav_path)
+                wav = wav.cuda()
 
-    for key in results:
-        writer.add_scalar(f"dev/{key}", results[key], step)
+                hidden_states, _ = model.student_forward(wav)
+                hidden_states = hidden_states[self.config.model.segmentation_layer].squeeze(0).cpu().numpy()
+                outputs = {"hidden_states": hidden_states}
 
-    model.train()
-    torch.cuda.empty_cache()
+                # save hidden states
+                segment_name = wav_name.replace(".flac", ".npy")
+                segment_path = segment_dir / segment_name
+                segment_path.parent.mkdir(parents=True, exist_ok=True)
+                segment_paths.append(segment_path)
+                np.save(segment_path, outputs)
 
-    return results
+                total_seconds += wav.shape[1] / sr
+
+        parallel_mincut(
+            segment_paths,
+            self.config.common.disable_tqdm,
+            self.config.mincut.sec_per_frame,
+            self.config.mincut.sec_per_syllable,
+            self.config.mincut.merge_threshold,
+            self.config.mincut.min_duration,
+            self.config.mincut.max_duration,
+            self.config.mincut.num_workers,
+        )
+
+        results = BoundaryDetectionEvaluator(
+            self.config.path.segment_dir,
+            self.config.dataset.dev_alignment,
+            self.config.dataset.dev_alignment,
+            tolerance=0.05,
+            max_val_num=None,
+        ).evaluate()
+
+        # calculate the unit frequency
+        num_units = 0
+
+        for segment_path in segment_paths:
+            ckpt = np.load(segment_path, allow_pickle=True)[()]
+            num_units += len(ckpt["segments"])
+
+        results["unit_frequency"] = num_units / total_seconds
+
+        def round_float(results, ndigits: int = 3):
+            if isinstance(results, dict):
+                return {k: round_float(v) for k, v in results.items()}
+            elif isinstance(results, float):
+                return round(results, ndigits)
+            else:
+                return results
+
+        results = round_float(results)
+
+        with open(Path(args.output_dir) / f"score_dev_{state.global_step}.csv", "w") as f:
+            json.dump(results, f, indent=2)
+
+        model.train()
+        torch.cuda.empty_cache()
 
 
 def train(config):
-    fix_random_seed(config.common.seed)
-
-    train_dataset = ConcatDataset(
-        [
-            LibriSpeech(
-                root=config.dataset.root,
-                url="train-clean-100",
-                download=config.dataset.download,
-                max_sample_size=config.dataset.max_sample_size,
-                perturb=config.dataset.perturb,
-            ),
-            LibriSpeech(
-                root=config.dataset.root,
-                url="train-clean-360",
-                download=config.dataset.download,
-                max_sample_size=config.dataset.max_sample_size,
-                perturb=config.dataset.perturb,
-            ),
-            LibriSpeech(
-                root=config.dataset.root,
-                url="train-other-500",
-                download=config.dataset.download,
-                max_sample_size=config.dataset.max_sample_size,
-                perturb=config.dataset.perturb,
-            ),
-        ]
-    )
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=config.dataloader.batch_size,
-        shuffle=True,
-        num_workers=config.dataloader.num_workers,
-        collate_fn=LibriSpeech.collate_fn,
+    train_dataset = LibriLight(
+        data_dir=config.dataset.lh_dir,
+        max_sample_size=config.dataset.max_sample_size,
+        perturb=config.dataset.perturb,
     )
 
     if config.model.model_type == "s5hubert":
@@ -134,7 +133,7 @@ def train(config):
             head_out_size=config.model.head_out_size,
             head_hidden_size=config.model.head_hidden_size,
             ema_decay=config.model.ema_decay,
-        ).cuda()
+        )
     elif config.model.model_type == "s5hubert_dino":
         model = S5HubertDino(
             model_name_or_path=config.model.model_name_or_path,
@@ -146,85 +145,20 @@ def train(config):
             student_temp=config.model.student_temp,
             center_momentum=config.model.center_momentum,
             ema_decay=config.model.ema_decay,
-        ).cuda()
+        )
     else:
         return
 
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=config.optim.lr,
-        weight_decay=config.optim.weight_decay,
+    model.defrost_transformer_encoder()
+    model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+
+    training_args = TrainingArguments(**OmegaConf.to_container(config.training_args))
+
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        data_collator=LibriLight.collate_fn,
+        callbacks=[EMACallback(), DefrostCallback(), SavingCallback(), EvaluationCallback(config)],
     )
-
-    # learning rate scheduler
-    assert config.optim.stage_ratio[0] + config.optim.stage_ratio[1] + config.optim.stage_ratio[2] == 1
-    T_max = config.optim.epoch * len(train_loader)
-    warmup_steps = int(T_max * config.optim.stage_ratio[0])
-    hold_steps = int(T_max * config.optim.stage_ratio[1])
-    decay_steps = T_max - warmup_steps - hold_steps
-    lr_scheduler = get_tri_stage_schedule(
-        optimizer,
-        config.optim.lr,
-        config.optim.lr_min,
-        warmup_steps,
-        hold_steps,
-        decay_steps,
-    )
-
-    scaler = torch.GradScaler("cuda", init_scale=1e32)
-    writer = SummaryWriter(config.path.checkpoint)
-
-    last_epoch = 0
-    step = 0
-
-    if step < warmup_steps:
-        model.freeze_pretrained_modules()
-    else:
-        model.defrost_transformer_encoder()
-
-    for epoch in range(last_epoch + 1, config.optim.epoch + 1):
-        model.train()
-
-        for batch in tqdm(train_loader, desc=f"epoch {epoch}", disable=config.common.disable_tqdm):
-            with torch.autocast("cuda", dtype=torch.bfloat16):
-                loss = model(
-                    teacher_input_values=batch["teacher_input_values"].cuda(),
-                    student_input_values=batch["student_input_values"].cuda(),
-                    teacher_attention_mask=batch["teacher_attention_mask"].cuda(),
-                    student_attention_mask=batch["student_attention_mask"].cuda(),
-                )
-            scaler.scale(loss).backward()
-
-            # gradient clipping
-            scaler.unscale_(optimizer)
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.optim.max_norm)
-
-            # update student
-            scaler.step(optimizer)
-            scale = scaler.get_scale()
-            scaler.update()
-            optimizer.zero_grad()
-
-            # update teacher
-            model.update_teacher()
-
-            # update learning rate
-            lr = lr_scheduler.get_last_lr()[0]
-            lr_scheduler.step()
-
-            step += 1
-
-            # tensorboard log
-            writer.add_scalar("train/loss", loss.item(), step)
-            writer.add_scalar("train/lr", lr, step)
-            writer.add_scalar("train/scale", scale, step)
-            writer.add_scalar("train/grad_norm", grad_norm.item(), step)
-
-            if step == warmup_steps:
-                model.defrost_transformer_encoder()
-
-        results = validate(config, model, writer, step)
-
-        # save model
-        Path(config.path.checkpoint).parent.mkdir(parents=True, exist_ok=True)
-        model.student.save_pretrained(config.path.checkpoint)
+    trainer.train(resume_from_checkpoint=config.training_args.resume_from_checkpoint)

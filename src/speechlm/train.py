@@ -4,11 +4,10 @@ import torch
 from datasets import concatenate_datasets, load_dataset
 from deepspeed.utils.tensor_fragment import fragment_address
 from omegaconf import OmegaConf
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
 
 from .callbacks import DefrostCallback, EvaluationCallback
 from .data import get_collator
-from .trainer import SpeechLMTrainer
 
 torch.serialization.add_safe_globals(
     [
@@ -48,27 +47,11 @@ def train(config):
     model = AutoModelForCausalLM.from_pretrained(config.model_args.name)
     model.resize_token_embeddings(len(tokenizer), mean_resizing=config.model_args.mean_resizing)
 
-    callbacks = [EvaluationCallback(eval_dataset)]
-
-    if (
-        not config.training_args.resume_from_checkpoint
-        or int(config.training_args.resume_from_checkpoint.rsplit("-", 1)[1]) < config.model_args.defrost_steps
-    ):
-        model.model.layers.requires_grad_(False)
-        model.model.norm.requires_grad_(False)
-        handle_input_embeddings = model.get_input_embeddings().weight.register_hook(
-            lambda grad: torch.cat([torch.zeros_like(grad[: len(vocab)]), grad[len(vocab) :]])
-        )
-        handle_output_embeddings = model.get_output_embeddings().weight.register_hook(
-            lambda grad: torch.cat([torch.zeros_like(grad[: len(vocab)]), grad[len(vocab) :]])
-        )
-        callbacks.append(
-            DefrostCallback(handle_input_embeddings, handle_output_embeddings, config.model_args.defrost_steps)
-        )
+    callbacks = [EvaluationCallback(eval_dataset), DefrostCallback(config.model_args.defrost_steps, len(vocab))]
 
     training_args = TrainingArguments(**OmegaConf.to_container(config.training_args))
 
-    trainer = SpeechLMTrainer(
+    trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,

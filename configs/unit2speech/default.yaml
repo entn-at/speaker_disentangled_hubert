@@ -29,6 +29,7 @@ flow_matching:
     fp16: true
     eval_steps: 100000
     remove_unused_columns: false
+    optim: "adamw_torch_fused"
     ddp_find_unused_parameters: false
     resume_from_checkpoint: null
 
@@ -43,6 +44,7 @@ flow_matching:
     save_steps: 10
     fp16: true
     remove_unused_columns: false
+    optim: "adamw_torch_fused"
     ddp_find_unused_parameters: false
     resume_from_checkpoint: "models/flow_matching/checkpoint-400000"
 

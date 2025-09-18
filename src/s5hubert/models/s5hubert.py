@@ -23,6 +23,7 @@ from torch import nn
 from transformers import AutoConfig, AutoModel
 from transformers.modeling_outputs import SequenceClassifierOutput
 from transformers.models.hubert.modeling_hubert import HubertModel, HubertPreTrainedModel
+from transformers.utils import ModelOutput
 
 from ..utils.mincut import mincut_torch
 from ..utils.misc import fix_random_seed
@@ -97,7 +98,8 @@ class S5Hubert(nn.Module):
     @torch.no_grad()
     def update_teacher(self):
         for param_s, param_t in zip(self.student.encoder.layers.parameters(), self.teacher_encoder_layers.parameters()):
-            param_t.data.mul_(self.ema_decay).add_((1 - self.ema_decay) * param_s.detach().data)
+            if param_s.requires_grad:
+                param_t.data.mul_(self.ema_decay).add_((1 - self.ema_decay) * param_s.detach().data)
 
         for param_s, param_t in zip(self.student_projector.parameters(), self.teacher_projector.parameters()):
             param_t.data.mul_(self.ema_decay).add_((1 - self.ema_decay) * param_s.detach().data)
@@ -108,6 +110,7 @@ class S5Hubert(nn.Module):
         student_input_values: torch.Tensor,
         teacher_attention_mask: Optional[torch.Tensor] = None,
         student_attention_mask: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> torch.Tensor:
         # disable dropout
         self.student.feature_projection.eval()
@@ -133,7 +136,8 @@ class S5Hubert(nn.Module):
         student_projection = self.student_projector(student_pooled_output)
         student_prediction = self.student_predictor(student_projection)
 
-        return self.loss_fn(student_prediction, teacher_projection)
+        loss = self.loss_fn(student_prediction, teacher_projection)
+        return ModelOutput(loss=loss)
 
     def student_forward(
         self,

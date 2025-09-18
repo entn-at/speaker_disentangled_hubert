@@ -110,7 +110,15 @@ dataset.root in a config file
 ## Syllable discovery
 
 ```shell
-python main_speech2unit.py --config configs/speech2unit/default.yaml
+tmux new -s speech2unit
+accelerate launch \
+  --config_file=configs/speech2unit/ddp.yaml \
+  --main_process_ip= \
+  --machine_rank= \
+  main_speech2unit.py train
+Ctrl + b
+d  # detach
+tmux a -t speech2unit  # attach
 ```
 
 To run only a sub-task (train, syllable_segmentation, quantize, or evaluate), specify it as an argument.

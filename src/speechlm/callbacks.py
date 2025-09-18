@@ -107,10 +107,20 @@ class EvaluationCallback(TrainerCallback):
 
 
 class DefrostCallback(TrainerCallback):
-    def __init__(self, handle_input_embeddings, handle_output_embeddings, defrost_steps: int):
-        self.handle_input_embeddings = handle_input_embeddings
-        self.handle_output_embeddings = handle_output_embeddings
+    def __init__(self, defrost_steps: int, vocab_size: int):
         self.defrost_steps = defrost_steps
+        self.vocab_size = vocab_size
+
+    def on_train_begin(self, args, state, control, model, **kwargs):
+        if state.global_step < self.defrost_steps:
+            model.model.layers.requires_grad_(False)
+            model.model.norm.requires_grad_(False)
+            self.handle_input_embeddings = model.get_input_embeddings().weight.register_hook(
+                lambda grad: torch.cat([torch.zeros_like(grad[: self.vocab_size]), grad[self.vocab_size :]])
+            )
+            self.handle_output_embeddings = model.get_output_embeddings().weight.register_hook(
+                lambda grad: torch.cat([torch.zeros_like(grad[: self.vocab_size]), grad[self.vocab_size :]])
+            )
 
     def on_step_end(self, args, state, control, model, **kwargs):
         if state.global_step == self.defrost_steps:

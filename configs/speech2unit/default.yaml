@@ -11,6 +11,7 @@ path:
 
 dataset:
   root: "data" # ${root}/LibriSpeech/train-clean-100, train-clean-360, ...
+  lh_dir: "data/libriheavy" # ${lh_dir}/[small|medium|large]
   download: false
   max_sample_size: 80080 # 5 seconds
   train_file: "data/librispeech_train.txt"
@@ -19,10 +20,6 @@ dataset:
   dev_alignment: "src/sdhubert/files/librispeech_syllable_val.json"
   test_alignment: "src/sdhubert/files/librispeech_syllable_test.json"
   perturb: true
-
-dataloader:
-  batch_size: 216 # work with a single 48GB VRAM GPU
-  num_workers: 6
 
 model:
   model_type: "s5hubert"
@@ -33,13 +30,26 @@ model:
   ema_decay: 0.999
   segmentation_layer: 8
 
-optim:
-  epoch: 10
-  lr: 0.0001
-  lr_min: 0.00001
-  stage_ratio: [0.2, 0.4, 0.4] # tri-stage lr schedule
+training_args:
+  output_dir: "models/s5-hubert"
+  per_device_train_batch_size: 216
+  learning_rate: 0.0001
   weight_decay: 0.01
-  max_norm: 0.001
+  max_grad_norm: 0.001
+  max_steps: 13000
+  lr_scheduler_type: "warmup_stable_decay"
+  lr_scheduler_kwargs: {"num_decay_steps": 5200, "min_lr_ratio": 0.1, "decay_type": "linear"}
+  warmup_steps: 2600
+  logging_steps: 10
+  save_steps: 1300
+  save_total_limit: null
+  bf16: true
+  eval_steps: 1300
+  dataloader_num_workers: 6
+  remove_unused_columns: false
+  optim: "adamw_torch_fused"
+  ddp_find_unused_parameters: true
+  resume_from_checkpoint: null
 
 quantizer:
   n_clusters1: 24576

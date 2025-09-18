@@ -37,9 +37,7 @@ Qmin, Qmax = 2, 5
 Fc = np.exp(np.linspace(np.log(60), np.log(7600), 10))
 
 
-def _load_waveform(root: str, filename: str, exp_sr: int = 16000):
-    path = os.path.join(root, filename)
-
+def _load_waveform(path, exp_sr: int = 16000):
     wav, sr = sf.read(path)
     assert sr == exp_sr
     if wav.ndim == 2:

@@ -20,6 +20,7 @@ from typing import Tuple
 import torch
 from torch import nn
 from transformers import AutoConfig, AutoModel
+from transformers.utils import ModelOutput
 
 from .modules import DINOHead, DINOLoss
 
@@ -84,7 +85,8 @@ class S5HubertDino(nn.Module):
     @torch.no_grad()
     def update_teacher(self):
         for param_s, param_t in zip(self.student.encoder.layers.parameters(), self.teacher_encoder_layers.parameters()):
-            param_t.data.mul_(self.ema_decay).add_((1 - self.ema_decay) * param_s.detach().data)
+            if param_s.requires_grad:
+                param_t.data.mul_(self.ema_decay).add_((1 - self.ema_decay) * param_s.detach().data)
 
         for param_s, param_t in zip(self.student_head.parameters(), self.teacher_head.parameters()):
             param_t.data.mul_(self.ema_decay).add_((1 - self.ema_decay) * param_s.detach().data)
@@ -95,6 +97,7 @@ class S5HubertDino(nn.Module):
         student_input_values: torch.Tensor,
         teacher_attention_mask: torch.Tensor | None = None,
         student_attention_mask: torch.Tensor | None = None,
+        **kwargs,
     ) -> torch.Tensor:
         # enable dropout
         self.student.feature_projection.train()
@@ -111,7 +114,8 @@ class S5HubertDino(nn.Module):
             )
             teacher_logits = self.teacher_head(teacher_hidden_states[-1][teacher_padding_mask])
 
-        return self.loss_fn(student_logits, teacher_logits)
+        loss = self.loss_fn(student_logits, teacher_logits)
+        return ModelOutput(loss=loss)
 
     def student_forward(
         self,
