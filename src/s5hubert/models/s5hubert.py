@@ -260,7 +260,7 @@ class S5HubertForSyllableDiscovery(HubertPreTrainedModel):
         seed: int = 0,
         deduplicate: bool = True,
         sec_per_syllable: float = 0.15,
-        merge_threshold: Optional[float] = 0.6,
+        merge_threshold: Optional[float] = 0.7,
         min_duration: int = 3,
         max_duration: int = 35,
         max_chunk: int = 320080,

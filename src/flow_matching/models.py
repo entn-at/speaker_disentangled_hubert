@@ -144,7 +144,7 @@ class FlowMatchingModel(PreTrainedModel):
             if embedding is None
             else embedding
         )
-        self.to_embed = nn.Linear(config.num_mel_bins + config.embedding_dim, config.hidden_size)
+        self.to_embed = nn.Linear(config.num_mel_bins + config.embedding_dim + config.num_mel_bins, config.hidden_size)
 
         self.layers = nn.ModuleList([DiTLayer(config) for _ in range(config.num_hidden_layers)])
         self.norm = nn.RMSNorm(config.hidden_size)
@@ -191,9 +191,9 @@ class FlowMatchingModel(PreTrainedModel):
 
             attention_mask = input_ids.ne(self.config.vocab_size)
             duration_predictions = duration_predictions.masked_select(attention_mask)
-            duration_labels = duration_labels.masked_select(attention_mask)
-            duration_labels = torch.log(duration_labels.float() + self.duration_predictor.log_domain_offset)
-            duration_loss = F.mse_loss(duration_predictions, duration_labels)
+            duration_labels_ = duration_labels.masked_select(attention_mask)
+            duration_labels_ = torch.log(duration_labels_.float() + self.duration_predictor.log_domain_offset)
+            duration_loss = F.mse_loss(duration_predictions, duration_labels_)
 
         time_embeddings = self.time_cond_mlp(timesteps)
 
@@ -202,7 +202,15 @@ class FlowMatchingModel(PreTrainedModel):
         dropout_mask = dropout_mask.expand_as(inputs_embeds)
         inputs_embeds.masked_fill_(dropout_mask, 0.0)
 
-        hidden_states = torch.cat([xt, inputs_embeds], dim=-1)
+        # causal context for streaming inference
+        ctx_len = input_ids.ne(self.config.vocab_size).sum(dim=1) * torch.rand(bsz, device=input_ids.device) * 0.3
+        ctx_len = ctx_len * (torch.rand(bsz, device=input_ids.device) < 0.5)
+        ctx_mask = torch.arange(input_ids.shape[1], device=ctx_len.device).unsqueeze(0) < ctx_len.unsqueeze(1)
+        ctx_len = duration_labels.masked_fill(~ctx_mask, 0).sum(dim=1)
+        ctx_mask = torch.arange(spectrogram_labels.shape[1], device=ctx_len.device).unsqueeze(0) < ctx_len.unsqueeze(1)
+        x_ctx = spectrogram_labels.masked_fill(~ctx_mask.unsqueeze(2).expand_as(spectrogram_labels), 0)
+
+        hidden_states = torch.cat([xt, inputs_embeds, x_ctx], dim=-1)
         hidden_states = self.to_embed(hidden_states)
 
         # rotary embeddings
@@ -258,8 +266,8 @@ class FlowMatchingModel(PreTrainedModel):
 
             # concat source signal, semantic / phoneme conditioning embed, and conditioning
             # and project
-            hidden_states_cond = torch.cat([xt, inputs_embeds], dim=-1)
-            hidden_states_uncond = torch.cat([xt, torch.zeros_like(inputs_embeds)], dim=-1)
+            hidden_states_cond = torch.cat([xt, inputs_embeds, torch.zeros_like(xt)], dim=-1)
+            hidden_states_uncond = torch.cat([xt, torch.zeros_like(inputs_embeds), torch.zeros_like(xt)], dim=-1)
             hidden_states = torch.cat([hidden_states_cond, hidden_states_uncond])
             hidden_states = self.to_embed(hidden_states)
 

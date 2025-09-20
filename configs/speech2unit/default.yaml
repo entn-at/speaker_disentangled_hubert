@@ -32,7 +32,7 @@ model:
 
 training_args:
   output_dir: "models/s5-hubert"
-  per_device_train_batch_size: 216
+  per_device_train_batch_size: 256
   learning_rate: 0.0001
   weight_decay: 0.01
   max_grad_norm: 0.001
@@ -54,7 +54,7 @@ training_args:
 quantizer:
   n_clusters1: 24576
   n_clusters2: 16384
-  niter: 100
+  niter: 50
   nredo: 5
   verbose: true
   random_state: ${common.seed}
@@ -65,7 +65,7 @@ quantizer:
 mincut:
   sec_per_frame: 0.02
   sec_per_syllable: 0.15
-  merge_threshold: 0.6
+  merge_threshold: 0.7
   min_duration: 3
   max_duration: 35
   num_workers: 2
