@@ -229,7 +229,12 @@ class FlowMatchingModel(PreTrainedModel):
         return ModelOutput(loss=loss)
 
     @torch.inference_mode()
-    def sample(self, input_ids: torch.LongTensor) -> torch.FloatTensor:
+    def sample(
+        self,
+        input_ids: torch.LongTensor,
+        past_spectrogram: Optional[torch.FloatTensor] = None,
+        past_durations: Optional[torch.LongTensor] = None,
+    ) -> ModelOutput:
         """
         Args:
             input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
@@ -244,9 +249,16 @@ class FlowMatchingModel(PreTrainedModel):
         inputs_embeds = self.embed_tokens(input_ids)
 
         # forward duration predictor
+        duration_predictions = None
+
         if self.config.predict_duration:
             duration_predictions = self.duration_predictor(inputs_embeds)
             duration_predictions = duration_predictions.masked_fill(~mask, 0.0)
+
+            # teacher forcing past syllabic unit durations
+            if past_durations is not None:
+                duration_predictions[:, : past_durations.shape[1]] = past_durations
+
             inputs_embeds = length_regulator(inputs_embeds, duration_predictions)
 
             # update mask
@@ -257,6 +269,11 @@ class FlowMatchingModel(PreTrainedModel):
         xt = torch.randn(bsz, seq_len, self.config.num_mel_bins, device=inputs_embeds.device)
         expand_mask = torch.cat([mask, mask])
 
+        # causal context
+        x_ctx = torch.zeros_like(xt)
+        if past_spectrogram is not None:
+            x_ctx[:, : past_spectrogram.shape[1]] = (past_spectrogram - self.config.mean) / self.config.std
+
         # rotary embeddings
         position_ids = torch.arange(inputs_embeds.shape[1], device=inputs_embeds.device).unsqueeze(0)
         position_embeddings = self.rotary_emb(inputs_embeds, position_ids)
@@ -266,8 +283,8 @@ class FlowMatchingModel(PreTrainedModel):
 
             # concat source signal, semantic / phoneme conditioning embed, and conditioning
             # and project
-            hidden_states_cond = torch.cat([xt, inputs_embeds, torch.zeros_like(xt)], dim=-1)
-            hidden_states_uncond = torch.cat([xt, torch.zeros_like(inputs_embeds), torch.zeros_like(xt)], dim=-1)
+            hidden_states_cond = torch.cat([xt, inputs_embeds, x_ctx], dim=-1)
+            hidden_states_uncond = torch.cat([xt, torch.zeros_like(inputs_embeds), x_ctx], dim=-1)
             hidden_states = torch.cat([hidden_states_cond, hidden_states_uncond])
             hidden_states = self.to_embed(hidden_states)
 
@@ -286,7 +303,12 @@ class FlowMatchingModel(PreTrainedModel):
         x1 = xt * self.config.std + self.config.mean
         x1[~mask] = dynamic_range_compression_torch(torch.tensor(0))
 
-        return x1
+        # remove past
+        if past_spectrogram is not None and past_durations is not None:
+            x1 = x1[:, past_spectrogram.shape[1] :]
+            duration_predictions = duration_predictions[:, past_durations.shape[1] :]
+
+        return ModelOutput(spectrogram=x1, durations=duration_predictions)
 
 
 class FlowMatchingWithBigVGan(PreTrainedModel):
@@ -313,20 +335,13 @@ class FlowMatchingWithBigVGan(PreTrainedModel):
         model.vocoder = BigVGan.from_pretrained(vocoder_path, use_cuda_kernel=use_cuda_kernel)
         return model
 
-    def _get_waveform_lengths(self, spectrogram_lengths):
-        def _conv_out_len(input_len, kernel_size, stride, padding):
-            # https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose1d.html
-            return (input_len - 1) * stride - 2 * padding + kernel_size
-
-        for kernel_size, stride in zip(
-            self.config.vocoder_config.upsample_kernel_sizes, self.config.vocoder_config.upsample_rates
-        ):
-            spectrogram_lengths = _conv_out_len(spectrogram_lengths, kernel_size, stride, (kernel_size - stride) // 2)
-
-        return spectrogram_lengths
-
     @torch.inference_mode()
-    def forward(self, input_ids: torch.LongTensor) -> List[torch.FloatTensor]:
+    def forward(
+        self,
+        input_ids: torch.LongTensor,
+        past_spectrogram: Optional[torch.FloatTensor] = None,
+        past_durations: Optional[torch.LongTensor] = None,
+    ) -> ModelOutput:
         """
         Args:
             input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
@@ -336,17 +351,6 @@ class FlowMatchingWithBigVGan(PreTrainedModel):
             waveform (`list` of `torch.FloatTensor` of shape `(1, (sequence_length - 1) * 320 + 400)`):
                 Synthesized waveforms.
         """
-        spectrogram = self.model.sample(input_ids)
-
-        pad_value = dynamic_range_compression_torch(torch.tensor(0))
-        mask = spectrogram.ne(pad_value).all(dim=2)
-        spectrogram_lengths = mask.sum(dim=1)
-        waveform_lengths = self._get_waveform_lengths(spectrogram_lengths)
-
-        waveform = self.vocoder(spectrogram)
-
-        outputs = []
-        for output, length in zip(waveform, waveform_lengths):
-            outputs.append(output[:length].unsqueeze(0))
-
-        return outputs
+        outputs = self.model.sample(input_ids, past_spectrogram, past_durations)
+        waveform = self.vocoder(outputs.spectrogram)
+        return ModelOutput(waveform=waveform, spectrogram=outputs.spectrogram, durations=outputs.durations)

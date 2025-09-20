@@ -59,7 +59,7 @@ units = tokenizer.decode(generated_ids)
 units = torch.tensor([int(unit) for unit in re.findall(r"<(\d+)>", units)], device=decoder.device)
 
 # unit-to-speech synthesis
-generated_speech = decoder(units.unsqueeze(0))[0].cpu()
+generated_speech = decoder(units.unsqueeze(0)).waveform.cpu()
 ```
 
 ## Demo

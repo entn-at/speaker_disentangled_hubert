@@ -28,7 +28,7 @@ def synthesize(audio: str) -> Tuple[int, np.ndarray]:
     units = outputs[0]["units"]  # [3950, 67, ..., 503]
 
     # unit-to-speech synthesis
-    generated_speech = decoder(units.unsqueeze(0))[0].squeeze(0).cpu().numpy()
+    generated_speech = decoder(units.unsqueeze(0)).waveform.squeeze(0).cpu().numpy()
 
     return 16000, generated_speech
 
