@@ -224,8 +224,7 @@ class FlowMatchingModel(PreTrainedModel):
         hidden_states = self.norm(hidden_states)
         vt = self.to_pred(hidden_states)
 
-        loss = F.mse_loss(vt[mask], ut[mask]) + duration_loss
-
+        loss = F.mse_loss(vt[mask.logical_and(~ctx_mask)], ut[mask.logical_and(~ctx_mask)]) + duration_loss
         return ModelOutput(loss=loss)
 
     @torch.inference_mode()
@@ -294,10 +293,12 @@ class FlowMatchingModel(PreTrainedModel):
 
             hidden_states = self.norm(hidden_states)
 
+            # classifier free guidance
             vt = self.to_pred(hidden_states)
             vt_cond, vt_uncond = torch.chunk(vt, 2)
             vt = vt_cond + self.config.cfg_strength * (vt_cond - vt_uncond)
 
+            # Euler method
             xt = xt + vt * self.config.dt
 
         x1 = xt * self.config.std + self.config.mean
@@ -350,6 +351,27 @@ class FlowMatchingWithBigVGan(PreTrainedModel):
         Returns:
             waveform (`list` of `torch.FloatTensor` of shape `(1, (sequence_length - 1) * 320 + 400)`):
                 Synthesized waveforms.
+
+        Example:
+
+        ```python
+        >>> chunk_size = 10
+        >>> past_input_ids = torch.empty(0, dtype=units.dtype, device=units.device)
+        >>> past_spectrogram = None
+        >>> past_durations = None
+
+        >>> for input_ids in torch.split(units, chunk_size):
+        >>>     # unit-to-speech synthesis
+        >>>     outputs = decoder(torch.cat([past_input_ids, input_ids]).unsqueeze(0), past_spectrogram, past_durations)
+        >>>     generated_speech = outputs.waveform.squeeze(0).cpu().numpy()
+
+        >>>     # update past context to last chunk only
+        >>>     past_input_ids = input_ids
+        >>>     past_spectrogram = outputs.spectrogram
+        >>>     past_durations = outputs.durations
+
+        >>>     yield 16000, generated_speech
+        ```
         """
         outputs = self.model.sample(input_ids, past_spectrogram, past_durations)
         waveform = self.vocoder(outputs.spectrogram)
