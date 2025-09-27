@@ -304,11 +304,6 @@ class FlowMatchingModel(PreTrainedModel):
         x1 = xt * self.config.std + self.config.mean
         x1[~mask] = dynamic_range_compression_torch(torch.tensor(0))
 
-        # remove past
-        if past_spectrogram is not None and past_durations is not None:
-            x1 = x1[:, past_spectrogram.shape[1] :]
-            duration_predictions = duration_predictions[:, past_durations.shape[1] :]
-
         return ModelOutput(spectrogram=x1, durations=duration_predictions)
 
 
@@ -346,10 +341,10 @@ class FlowMatchingWithBigVGan(PreTrainedModel):
         """
         Args:
             input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
-                Input sequence of text vectors.
+                Input syllabic unit sequence.
 
         Returns:
-            waveform (`list` of `torch.FloatTensor` of shape `(1, (sequence_length - 1) * 320 + 400)`):
+            waveform (`list` of `torch.FloatTensor` of shape `(1, (spectrogram_length - 1) * 320 + 400)`):
                 Synthesized waveforms.
 
         Example:
@@ -375,4 +370,35 @@ class FlowMatchingWithBigVGan(PreTrainedModel):
         """
         outputs = self.model.sample(input_ids, past_spectrogram, past_durations)
         waveform = self.vocoder(outputs.spectrogram)
+
+        # remove past context
+        if past_spectrogram is not None:
+            waveform = waveform[:, (past_spectrogram.shape[1] - 1) * 320 + 400 :]
+            outputs.spectrogram = outputs.spectrogram[:, past_spectrogram.shape[1] :]
+            outputs.durations = outputs.durations[:, past_durations.shape[1] :]
+
         return ModelOutput(waveform=waveform, spectrogram=outputs.spectrogram, durations=outputs.durations)
+
+    def forward_streaming(self, input_ids: torch.LongTensor, chunk_size: int = 10) -> ModelOutput:
+        """
+        Args:
+            input_ids (`torch.LongTensor` of shape `(sequence_length,)`):
+                Input syllabic unit sequence.
+        """
+        past_input_ids = torch.empty(0, dtype=input_ids.dtype, device=input_ids.device)
+        past_spectrogram = None
+        past_durations = None
+        waveform = []
+
+        for chunk_input_ids in torch.split(input_ids, chunk_size):
+            # unit-to-speech synthesis
+            outputs = self(torch.cat([past_input_ids, chunk_input_ids]).unsqueeze(0), past_spectrogram, past_durations)
+            waveform.append(outputs.waveform)
+
+            # update past context to last chunk only
+            past_input_ids = chunk_input_ids
+            past_spectrogram = outputs.spectrogram
+            past_durations = outputs.durations
+
+        waveform = torch.cat(waveform, dim=1)
+        return ModelOutput(waveform=waveform)
